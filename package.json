@@ -16,17 +16,17 @@
     "zod": "^3.22.4"
   },
   "optionalDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.11.1"
+    "@cloudflare/vitest-pool-workers": "^0.12.3"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260103.0",
+    "@cloudflare/workers-types": "^4.20260113.0",
     "cross-env": "^7.0.3",
     "eslint": "^8.57.0",
-    "miniflare": "4.20251217.0",
+    "miniflare": "4.20260111.0",
     "prettier": "3.7.4",
     "typescript": "^5.9.3",
     "vitest": "^2.1.9",
-    "wrangler": "latest",
+    "wrangler": "4.59.1",
     "esbuild": "0.27.2"
   },
   "engines": {
