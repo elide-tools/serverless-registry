@@ -4,9 +4,9 @@
   "description": "An open-source R2 registry",
   "main": "index.ts",
   "scripts": {
-    "deploy": "wrangler deploy --minify --env production",
-    "dev:miniflare": "cross-env NODE_ENV=development wrangler --env dev dev --port 9999 --live-reload",
-    "typecheck": "tsc",
+    "deploy": "bun x wrangler deploy --minify --env production",
+    "dev:miniflare": "cross-env NODE_ENV=development bun x wrangler --env dev dev --port 9999 --live-reload",
+    "typecheck": "bun x tsc",
     "test": "vitest --config test/vitest.config.ts run"
   },
   "dependencies": {
@@ -19,14 +19,13 @@
     "@cloudflare/vitest-pool-workers": "^0.12.3"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260113.0",
+    "@cloudflare/workers-types": "^4.20260118.0",
     "cross-env": "^7.0.3",
     "eslint": "^8.57.0",
-    "miniflare": "4.20260111.0",
-    "prettier": "3.7.4",
+    "miniflare": "4.20260114.0",
+    "prettier": "3.8.0",
     "typescript": "^5.9.3",
     "vitest": "^2.1.9",
-    "wrangler": "4.59.1",
     "esbuild": "0.27.2"
   },
   "engines": {
