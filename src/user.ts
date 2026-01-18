@@ -1,4 +1,8 @@
-import { Authenticator, AuthenticatorCheckCredentialsResponse, stripUsernamePasswordFromHeader } from "./auth";
+import {
+  Authenticator,
+  AuthenticatorCheckCredentialsResponse,
+  stripUsernamePasswordFromHeader,
+} from "./auth";
 import { errorString } from "./utils";
 import { RegistryTokens } from "./token";
 import type { RegistryTokenCapability } from "./auth";
@@ -6,8 +10,13 @@ import type { RegistryTokenCapability } from "./auth";
 export const SHA256_PREFIX = "sha256";
 export const SHA256_PREFIX_LEN = SHA256_PREFIX.length + 1; // add ":"
 
-export function hexToDigest(sha256: ArrayBuffer, prefix: string = SHA256_PREFIX + ":") {
-  const digest = [...new Uint8Array(sha256)].map((b) => b.toString(16).padStart(2, "0")).join("");
+export function hexToDigest(
+  sha256: ArrayBuffer,
+  prefix: string = SHA256_PREFIX + ":",
+) {
+  const digest = [...new Uint8Array(sha256)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 
   return `${prefix}${digest}`;
 }
@@ -18,7 +27,10 @@ function stringToArrayBuffer(s: string): ArrayBuffer {
   return arr;
 }
 
-export async function getSHA256(data: string, prefix: string = SHA256_PREFIX + ":"): Promise<string> {
+export async function getSHA256(
+  data: string,
+  prefix: string = SHA256_PREFIX + ":",
+): Promise<string> {
   const sha256 = new crypto.DigestStream("SHA-256");
   const w = sha256.getWriter();
   const encoder = new TextEncoder();
@@ -40,7 +52,9 @@ export class UserAuthenticator implements Authenticator {
     this.authmode = "UserAuthenticator";
   }
 
-  async checkCredentials(r: Request): Promise<AuthenticatorCheckCredentialsResponse> {
+  async checkCredentials(
+    r: Request,
+  ): Promise<AuthenticatorCheckCredentialsResponse> {
     const res = stripUsernamePasswordFromHeader(r);
     if ("verified" in res) {
       return res;
@@ -54,15 +68,27 @@ export class UserAuthenticator implements Authenticator {
     }
 
     try {
-      if (!crypto.subtle.timingSafeEqual(stringToArrayBuffer(username), stringToArrayBuffer(credential.username))) {
+      if (
+        !crypto.subtle.timingSafeEqual(
+          stringToArrayBuffer(username),
+          stringToArrayBuffer(credential.username),
+        )
+      ) {
         return { verified: false, payload: null };
       }
 
-      if (!crypto.subtle.timingSafeEqual(stringToArrayBuffer(password), stringToArrayBuffer(credential.password))) {
+      if (
+        !crypto.subtle.timingSafeEqual(
+          stringToArrayBuffer(password),
+          stringToArrayBuffer(credential.password),
+        )
+      ) {
         return { verified: false, payload: null };
       }
     } catch (err) {
-      console.error(`Failed authentication timingSafeEqual: ${errorString(err)}`);
+      console.error(
+        `Failed authentication timingSafeEqual: ${errorString(err)}`,
+      );
       return { verified: false, payload: null };
     }
 

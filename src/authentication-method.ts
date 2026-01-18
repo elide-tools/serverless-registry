@@ -6,14 +6,25 @@ import type { AuthenticatorCredentials } from "./user";
 export async function authenticationMethodFromEnv(env: Env) {
   if (env.JWT_REGISTRY_TOKENS_PUBLIC_KEY) {
     return await newRegistryTokens(env.JWT_REGISTRY_TOKENS_PUBLIC_KEY);
-  } else if ((env.USERNAME && env.PASSWORD) || (env.READONLY_USERNAME && env.READONLY_PASSWORD)) {
+  } else if (
+    (env.USERNAME && env.PASSWORD) ||
+    (env.READONLY_USERNAME && env.READONLY_PASSWORD)
+  ) {
     const credentials: AuthenticatorCredentials[] = [];
 
     if (env.USERNAME && env.PASSWORD) {
-      credentials.push({ username: env.USERNAME, password: env.PASSWORD, capabilities: ["pull", "push"] });
+      credentials.push({
+        username: env.USERNAME,
+        password: env.PASSWORD,
+        capabilities: ["pull", "push"],
+      });
     }
     if (env.READONLY_USERNAME && env.READONLY_PASSWORD) {
-      credentials.push({ username: env.READONLY_USERNAME, password: env.READONLY_PASSWORD, capabilities: ["pull"] });
+      credentials.push({
+        username: env.READONLY_USERNAME,
+        password: env.READONLY_PASSWORD,
+        capabilities: ["pull"],
+      });
     }
 
     return new UserAuthenticator(credentials);

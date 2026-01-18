@@ -9,7 +9,12 @@ import {
   limit,
   split,
 } from "../chunk";
-import { InternalError, ManifestError, RangeError, ServerError } from "../errors";
+import {
+  InternalError,
+  ManifestError,
+  RangeError,
+  ServerError,
+} from "../errors";
 import { SHA256_PREFIX_LEN, getSHA256, hexToDigest } from "../user";
 import { readableToBlob, readerToBlob, wrap } from "../utils";
 import { BlobUnknownError, ManifestUnknownError } from "../v2-errors";
@@ -67,11 +72,17 @@ export type State = {
   name: string;
 };
 
-export function getRegistryUploadsPath(state: { registryUploadId: string; name: string }): string {
+export function getRegistryUploadsPath(state: {
+  registryUploadId: string;
+  name: string;
+}): string {
   return `${state.name}/uploads/${state.registryUploadId}`;
 }
 
-export async function getJWT(env: Env, state: { registryUploadId: string; name: string }): Promise<string | null> {
+export async function getJWT(
+  env: Env,
+  state: { registryUploadId: string; name: string },
+): Promise<string | null> {
   const stateObject = await env.REGISTRY.get(getRegistryUploadsPath(state));
   if (stateObject === null) return null;
   try {
@@ -87,7 +98,10 @@ export async function getJWT(env: Env, state: { registryUploadId: string; name: 
   }
 }
 
-export async function encodeState(state: State, env: Env): Promise<{ jwt: string; hash: string }> {
+export async function encodeState(
+  state: State,
+  env: Env,
+): Promise<{ jwt: string; hash: string }> {
   const jwtSignature = await jwt.sign(
     { ...state, exp: Math.floor(Date.now() / 1000) + 60 * 60 * 2 },
     // TODO: Remove JWT encoding and use something faster like just plain bas64
@@ -97,7 +111,10 @@ export async function encodeState(state: State, env: Env): Promise<{ jwt: string
     },
   );
 
-  await env.REGISTRY.put(getRegistryUploadsPath(state), JSON.stringify({ jwt: jwtSignature }));
+  await env.REGISTRY.put(
+    getRegistryUploadsPath(state),
+    JSON.stringify({ jwt: jwtSignature }),
+  );
   return { jwt: jwtSignature, hash: await getSHA256(jwtSignature, "") };
 }
 
@@ -108,8 +125,13 @@ export async function getUploadState(
   uploadId: string,
   env: Env,
   verifyHash: string | undefined,
-): Promise<{ state: State; stateStr: string; hash: string } | RangeError | null> {
-  const stateStr = await getJWT(env, { registryUploadId: uploadId, name: name });
+): Promise<
+  { state: State; stateStr: string; hash: string } | RangeError | null
+> {
+  const stateStr = await getJWT(env, {
+    registryUploadId: uploadId,
+    name: name,
+  });
   if (stateStr === null) {
     return null;
   }
@@ -136,8 +158,13 @@ export class R2Registry implements Registry {
     this.gc = new GarbageCollector(this.env.REGISTRY);
   }
 
-  async manifestExists(name: string, reference: string): Promise<RegistryError | CheckManifestResponse> {
-    const [res, err] = await wrap(this.env.REGISTRY.head(`${name}/manifests/${reference}`));
+  async manifestExists(
+    name: string,
+    reference: string,
+  ): Promise<RegistryError | CheckManifestResponse> {
+    const [res, err] = await wrap(
+      this.env.REGISTRY.head(`${name}/manifests/${reference}`),
+    );
     if (err) {
       return wrapError("manifestExists", err);
     }
@@ -160,7 +187,10 @@ export class R2Registry implements Registry {
     };
   }
 
-  async listRepositories(limit?: number, last?: string): Promise<RegistryError | ListRepositoriesResponse> {
+  async listRepositories(
+    limit?: number,
+    last?: string,
+  ): Promise<RegistryError | ListRepositoriesResponse> {
     // The idea in listRepositories is list all entries in the R2 bucket and map them to repositories.
     // We do this by taking advantage of the name format in the R2 bucket:
     // name format is:
@@ -224,7 +254,11 @@ export class R2Registry implements Registry {
       }
     }
 
-    while (cursor !== undefined && typeof lastSeen === "string" && objectExistsInPath(lastSeen)) {
+    while (
+      cursor !== undefined &&
+      typeof lastSeen === "string" &&
+      objectExistsInPath(lastSeen)
+    ) {
       const nextList: R2Objects = await this.env.REGISTRY.list({
         limit: 50,
         cursor,
@@ -276,7 +310,10 @@ export class R2Registry implements Registry {
     const layers: string[] =
       manifest.schemaVersion === 1
         ? manifest.fsLayers.map((layer) => layer.blobSum)
-        : [...manifest.layers.map((layer) => layer.digest), manifest.config.digest];
+        : [
+            ...manifest.layers.map((layer) => layer.digest),
+            manifest.config.digest,
+          ];
     for (const key of layers) {
       const res = await this.env.REGISTRY.head(`${name}/blobs/${key}`);
       if (res === null) {
@@ -341,8 +378,15 @@ export class R2Registry implements Registry {
     }
 
     if (!(await this.gc.checkCanInsertData(name, gcMarker))) {
-      console.error("Manifest can't be uploaded as there is/was a garbage collection going");
-      return { response: new ServerError("garbage collection is on-going... check with registry administrator", 500) };
+      console.error(
+        "Manifest can't be uploaded as there is/was a garbage collection going",
+      );
+      return {
+        response: new ServerError(
+          "garbage collection is on-going... check with registry administrator",
+          500,
+        ),
+      };
     }
 
     const putReference = async () => {
@@ -372,15 +416,22 @@ export class R2Registry implements Registry {
     };
   }
 
-  async getManifest(name: string, reference: string): Promise<RegistryError | GetManifestResponse> {
-    const [res, err] = await wrap(this.env.REGISTRY.get(`${name}/manifests/${reference}`));
+  async getManifest(
+    name: string,
+    reference: string,
+  ): Promise<RegistryError | GetManifestResponse> {
+    const [res, err] = await wrap(
+      this.env.REGISTRY.get(`${name}/manifests/${reference}`),
+    );
     if (err) {
       return wrapError("getManifest", err);
     }
 
     if (!res) {
       return {
-        response: new Response(JSON.stringify(ManifestUnknownError), { status: 404 }),
+        response: new Response(JSON.stringify(ManifestUnknownError), {
+          status: 404,
+        }),
       };
     }
 
@@ -412,7 +463,11 @@ export class R2Registry implements Registry {
       }
       // Prevent recursive symlink
       if (res.customMetadata && symlinkHeader in res.customMetadata) {
-        return await this.mountExistingLayer(res.customMetadata[symlinkHeader], digest, destinationName);
+        return await this.mountExistingLayer(
+          res.customMetadata[symlinkHeader],
+          digest,
+          destinationName,
+        );
       }
       // Trying to mount a layer from sourceLayerPath to destinationLayerPath
 
@@ -438,8 +493,13 @@ export class R2Registry implements Registry {
     }
   }
 
-  async layerExists(name: string, tag: string): Promise<RegistryError | CheckLayerResponse> {
-    const [res, err] = await wrap(this.env.REGISTRY.head(`${name}/blobs/${tag}`));
+  async layerExists(
+    name: string,
+    tag: string,
+  ): Promise<RegistryError | CheckLayerResponse> {
+    const [res, err] = await wrap(
+      this.env.REGISTRY.head(`${name}/blobs/${tag}`),
+    );
     if (err) {
       return wrapError("layerExists", err);
     }
@@ -457,15 +517,22 @@ export class R2Registry implements Registry {
     };
   }
 
-  async getLayer(name: string, digest: string): Promise<RegistryError | GetLayerResponse> {
-    const [res, err] = await wrap(this.env.REGISTRY.get(`${name}/blobs/${digest}`));
+  async getLayer(
+    name: string,
+    digest: string,
+  ): Promise<RegistryError | GetLayerResponse> {
+    const [res, err] = await wrap(
+      this.env.REGISTRY.get(`${name}/blobs/${digest}`),
+    );
     if (err) {
       return wrapError("getLayer", err);
     }
 
     if (!res) {
       return {
-        response: new Response(JSON.stringify(BlobUnknownError), { status: 404 }),
+        response: new Response(JSON.stringify(BlobUnknownError), {
+          status: 404,
+        }),
       };
     }
 
@@ -476,7 +543,9 @@ export class R2Registry implements Registry {
       const [linkName, linkDigest] = layerPath.split("/blobs/");
       if (linkName == name && linkDigest == digest) {
         return {
-          response: new Response(JSON.stringify(BlobUnknownError), { status: 404 }),
+          response: new Response(JSON.stringify(BlobUnknownError), {
+            status: 404,
+          }),
         };
       }
       return await this.env.REGISTRY_CLIENT.getLayer(linkName, linkDigest);
@@ -512,8 +581,16 @@ export class R2Registry implements Registry {
     };
   }
 
-  async getUpload(namespace: string, uploadId: string): Promise<UploadObject | RegistryError> {
-    const state = await getUploadState(namespace, uploadId, this.env, undefined);
+  async getUpload(
+    namespace: string,
+    uploadId: string,
+  ): Promise<UploadObject | RegistryError> {
+    const state = await getUploadState(
+      namespace,
+      uploadId,
+      this.env,
+      undefined,
+    );
     if (state === null) {
       return {
         response: new Response(null, { status: 404 }),
@@ -549,7 +626,12 @@ export class R2Registry implements Registry {
       return { response: new InternalError() };
     }
 
-    const hashedState = await getUploadState(namespace, uploadId, this.env, stateHash);
+    const hashedState = await getUploadState(
+      namespace,
+      uploadId,
+      this.env,
+      stateHash,
+    );
     if (hashedState instanceof RangeError)
       return {
         response: hashedState,
@@ -574,7 +656,10 @@ export class R2Registry implements Registry {
       return { response: new InternalError() };
     }
 
-    const upload = this.env.REGISTRY.resumeMultipartUpload(state.registryUploadId, state.uploadId);
+    const upload = this.env.REGISTRY.resumeMultipartUpload(
+      state.registryUploadId,
+      state.uploadId,
+    );
     const uuid = state.registryUploadId;
     const env = this.env;
 
@@ -588,12 +673,16 @@ export class R2Registry implements Registry {
     //    Object part sizes must be at least 5MiB but no larger than 5GiB. All parts except the last one must be the same size. The last part has no minimum size, but must be the same or smaller than the other parts.
     //    The maximum number of parts is 10,000.
     //    Most S3 clients conform to these expectations.
-    const appendStreamKnownLength = async (stream: ReadableStream, size: number) => {
+    const appendStreamKnownLength = async (
+      stream: ReadableStream,
+      size: number,
+    ) => {
       // This is the normal code-path, hopefully by hinting with headers on the POST call all clients respect this
       if (
         (state.chunks.length === 0 ||
           (state.chunks[state.chunks.length - 1].size === size &&
-            state.chunks[state.chunks.length - 1].type === "multi-part-chunk")) &&
+            state.chunks[state.chunks.length - 1].type ===
+              "multi-part-chunk")) &&
         size <= MAXIMUM_CHUNK &&
         size >= MINIMUM_CHUNK
       ) {
@@ -610,19 +699,26 @@ export class R2Registry implements Registry {
       // This happens when maximum chunk's is surpassed, so we basically have to split this stream.
       // You can test very easy this branch of code by putting MAXIMUM_CHUNK == MINIMUM_CHUNK and docker pushing against the server.
       if (size > MAXIMUM_CHUNK) {
-        for await (const [reader, chunkSize] of split(stream, size, MAXIMUM_CHUNK)) {
+        for await (const [reader, chunkSize] of split(
+          stream,
+          size,
+          MAXIMUM_CHUNK,
+        )) {
           await appendStreamKnownLength(reader, chunkSize);
         }
 
         return undefined;
       }
 
-      const lastChunk = state.chunks.length ? state.chunks[state.chunks.length - 1] : undefined;
+      const lastChunk = state.chunks.length
+        ? state.chunks[state.chunks.length - 1]
+        : undefined;
       // This is a bad scenario, we uploaded a chunk and we have to copy.
       if (
         env.PUSH_COMPATIBILITY_MODE === "full" &&
         lastChunk &&
-        (lastChunk.type === "small-chunk" || lastChunk.type === "multi-part-chunk-no-same-size")
+        (lastChunk.type === "small-chunk" ||
+          lastChunk.type === "multi-part-chunk-no-same-size")
       ) {
         // nullability: getChunkStream for small-chunk always returns stream
         const chunkStream = (await getChunkBlob(env, lastChunk))!;
@@ -631,7 +727,10 @@ export class R2Registry implements Registry {
         state.parts.pop();
         const blob = await readerToBlob(stream);
         const streamCombined = new Blob([chunkStream, blob]);
-        await appendStreamKnownLength(limit(streamCombined.stream(), size + lastChunk.size), size + lastChunk.size);
+        await appendStreamKnownLength(
+          limit(streamCombined.stream(), size + lastChunk.size),
+          size + lastChunk.size,
+        );
         return;
       }
 
@@ -639,11 +738,15 @@ export class R2Registry implements Registry {
       // as we will upload the part directly. This is a normal workflow if the client is a good citizen
       if (
         (lastChunk && lastChunk.size > size) ||
-        (size < MINIMUM_CHUNK && (!lastChunk || lastChunk.type === "multi-part-chunk"))
+        (size < MINIMUM_CHUNK &&
+          (!lastChunk || lastChunk.type === "multi-part-chunk"))
       ) {
         const path = getHelperR2Path(uuid);
         state.chunks.push({
-          type: size < MINIMUM_CHUNK ? "small-chunk" : "multi-part-chunk-no-same-size",
+          type:
+            size < MINIMUM_CHUNK
+              ? "small-chunk"
+              : "multi-part-chunk-no-same-size",
           size,
           uploadId: uuid,
           r2Path: path,
@@ -670,16 +773,26 @@ export class R2Registry implements Registry {
           return;
         }
 
-        state.parts.push(await upload.uploadPart(state.parts.length + 1, stream));
+        state.parts.push(
+          await upload.uploadPart(state.parts.length + 1, stream),
+        );
         return;
       }
 
       // we know here that size >= MINIMUM_CHUNK and size >= lastChunk.size, this is just super inefficient, maybe in the future just throw RangeError here...
-      if (env.PUSH_COMPATIBILITY_MODE === "full" && lastChunk && size >= lastChunk.size) {
+      if (
+        env.PUSH_COMPATIBILITY_MODE === "full" &&
+        lastChunk &&
+        size >= lastChunk.size
+      ) {
         console.warn(
           "The client is being a bad citizen by trying to send a new chunk bigger than the chunk it sent. If this is giving problems disable this codepath altogether",
         );
-        for await (const [chunk, chunkSize] of split(stream, size, lastChunk.size)) {
+        for await (const [chunk, chunkSize] of split(
+          stream,
+          size,
+          lastChunk.size,
+        )) {
           await appendStreamKnownLength(chunk, chunkSize);
         }
 
@@ -730,7 +843,12 @@ export class R2Registry implements Registry {
       return { response: new InternalError() };
     }
 
-    const hashedState = await getUploadState(namespace, uploadId, this.env, stateHash);
+    const hashedState = await getUploadState(
+      namespace,
+      uploadId,
+      this.env,
+      stateHash,
+    );
     if (hashedState instanceof RangeError) {
       return {
         response: hashedState,
@@ -744,7 +862,9 @@ export class R2Registry implements Registry {
     const uuid = state.registryUploadId;
     if (state.parts.length === 0) {
       if (!stream) {
-        console.error("There has been an upload with zero parts and the body is null");
+        console.error(
+          "There has been an upload with zero parts and the body is null",
+        );
         return {
           response: new InternalError(),
         };
@@ -761,13 +881,20 @@ export class R2Registry implements Registry {
         sha256: (expectedSha as string).slice(SHA256_PREFIX_LEN),
       });
     } else {
-      const upload = this.env.REGISTRY.resumeMultipartUpload(uuid, state.uploadId);
+      const upload = this.env.REGISTRY.resumeMultipartUpload(
+        uuid,
+        state.uploadId,
+      );
       // TODO: Handle one last buffer here
       await upload.complete(state.parts);
       const obj = await this.env.REGISTRY.get(uuid);
-      const put = this.env.REGISTRY.put(`${namespace}/blobs/${expectedSha}`, obj!.body, {
-        sha256: (expectedSha as string).slice(SHA256_PREFIX_LEN),
-      });
+      const put = this.env.REGISTRY.put(
+        `${namespace}/blobs/${expectedSha}`,
+        obj!.body,
+        {
+          sha256: (expectedSha as string).slice(SHA256_PREFIX_LEN),
+        },
+      );
 
       await put;
       await this.env.REGISTRY.delete(uuid);
@@ -781,8 +908,16 @@ export class R2Registry implements Registry {
     };
   }
 
-  async cancelUpload(name: string, uploadId: UploadId): Promise<true | RegistryError> {
-    const hashedState = await getUploadState(name, uploadId, this.env, undefined);
+  async cancelUpload(
+    name: string,
+    uploadId: UploadId,
+  ): Promise<true | RegistryError> {
+    const hashedState = await getUploadState(
+      name,
+      uploadId,
+      this.env,
+      undefined,
+    );
     if (hashedState instanceof RangeError) {
       return { response: new InternalError() };
     }
@@ -793,7 +928,10 @@ export class R2Registry implements Registry {
     }
     const state = hashedState.state;
 
-    const upload = this.env.REGISTRY.resumeMultipartUpload(state.registryUploadId, state.uploadId);
+    const upload = this.env.REGISTRY.resumeMultipartUpload(
+      state.registryUploadId,
+      state.uploadId,
+    );
     await upload.abort();
     await this.env.REGISTRY.delete(getRegistryUploadsPath(state));
     return true;
@@ -824,7 +962,10 @@ export class R2Registry implements Registry {
     };
   }
 
-  async garbageCollection(namespace: string, mode: GarbageCollectionMode): Promise<boolean> {
+  async garbageCollection(
+    namespace: string,
+    mode: GarbageCollectionMode,
+  ): Promise<boolean> {
     return await this.gc.collect({ name: namespace, mode: mode });
   }
 }

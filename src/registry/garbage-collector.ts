@@ -4,7 +4,7 @@
 
 import { ManifestSchema } from "../manifest";
 import { hexToDigest } from "../user";
-import {symlinkHeader} from "./r2";
+import { symlinkHeader } from "./r2";
 
 export type GarbageCollectionMode = "unreferenced" | "untagged";
 export type GCOptions = {
@@ -93,7 +93,10 @@ export class GarbageCollector {
   async markForInsertion(namespace: string): Promise<string> {
     const uid = crypto.randomUUID();
     // mark that there is an on-going insertion
-    const deletion = await this.registry.put(`${namespace}/insertion/${uid}`, uid);
+    const deletion = await this.registry.put(
+      `${namespace}/insertion/${uid}`,
+      uid,
+    );
     if (deletion === null) throw new Error("unreachable");
     // set last_update so GC is able to invalidate
     await this.registry.put(`${namespace}/insertion/last_update`, null, {
@@ -113,7 +116,9 @@ export class GarbageCollector {
   }
 
   async getInsertionMark(namespace: string): Promise<string> {
-    const object = await this.registry.head(`${namespace}/insertion/last_update`);
+    const object = await this.registry.head(
+      `${namespace}/insertion/last_update`,
+    );
     if (object === null) {
       return "";
     }
@@ -125,8 +130,13 @@ export class GarbageCollector {
     return object.customMetadata["timestamp"] ?? "mark";
   }
 
-  async checkIfGCCanContinue(namespace: string, mark: string): Promise<boolean> {
-    const objects = await this.registry.list({ prefix: `${namespace}/insertion` });
+  async checkIfGCCanContinue(
+    namespace: string,
+    mark: string,
+  ): Promise<boolean> {
+    const objects = await this.registry.list({
+      prefix: `${namespace}/insertion`,
+    });
     for (const object of objects.objects) {
       if (object.key.endsWith("/last_update")) continue;
       if (object.uploaded.getTime() + 1000 * 60 <= Date.now()) {
@@ -147,8 +157,14 @@ export class GarbageCollector {
     return true;
   }
 
-  private async list(prefix: string, callback: (object: R2Object) => Promise<boolean>): Promise<boolean> {
-    const listed = await this.registry.list({ prefix: prefix, include: ["customMetadata"] });
+  private async list(
+    prefix: string,
+    callback: (object: R2Object) => Promise<boolean>,
+  ): Promise<boolean> {
+    const listed = await this.registry.list({
+      prefix: prefix,
+      include: ["customMetadata"],
+    });
     for (const object of listed.objects) {
       if ((await callback(object)) === false) {
         return false;
@@ -202,7 +218,9 @@ export class GarbageCollector {
       const referencedManifests = new Set<string>();
       // List tagged manifest to find manifest-list
       for (const [_, manifests] of Object.entries(manifestList)) {
-        const taggedManifest = [...manifests].filter((item) => !item.split("/").pop()?.startsWith("sha256:"));
+        const taggedManifest = [...manifests].filter(
+          (item) => !item.split("/").pop()?.startsWith("sha256:"),
+        );
         for (const manifestPath of taggedManifest) {
           // Tagged manifest some, load manifest content
           const manifest = await this.registry.get(manifestPath);
@@ -225,7 +243,11 @@ export class GarbageCollector {
         if (referencedManifests.has(key)) {
           continue;
         }
-        if (![...manifests].some((item) => !item.split("/").pop()?.startsWith("sha256:"))) {
+        if (
+          ![...manifests].some(
+            (item) => !item.split("/").pop()?.startsWith("sha256:"),
+          )
+        ) {
           // Add untagged manifest that should be removed
           manifests.forEach((manifest) => {
             manifestToRemove.add(manifest);
@@ -238,7 +260,9 @@ export class GarbageCollector {
       // Deleting untagged manifest
       if (manifestToRemove.size > 0) {
         if (!(await this.checkIfGCCanContinue(options.name, mark))) {
-          throw new Error("there is a manifest insertion going, the garbage collection shall stop");
+          throw new Error(
+            "there is a manifest insertion going, the garbage collection shall stop",
+          );
         }
 
         // GC will deleted untagged manifest
@@ -291,12 +315,19 @@ export class GarbageCollector {
       await this.list("", async (object) => {
         const objectPath = object.key;
         // Skip non-blobs object and from any other repository (symlink only target cross repository blobs)
-        if (objectPath.startsWith(`${options.name}/`) || !objectPath.includes("/blobs/sha256:")) {
+        if (
+          objectPath.startsWith(`${options.name}/`) ||
+          !objectPath.includes("/blobs/sha256:")
+        ) {
           return true;
         }
-        if (object.customMetadata && object.customMetadata[symlinkHeader] !== undefined) {
+        if (
+          object.customMetadata &&
+          object.customMetadata[symlinkHeader] !== undefined
+        ) {
           // Check if the symlink target the current GC repository
-          if (object.customMetadata[symlinkHeader] !== options.name) return true;
+          if (object.customMetadata[symlinkHeader] !== options.name)
+            return true;
           // Get symlink blob to retrieve its target
           const symlinkBlob = await this.registry.get(object.key);
           // Skip if symlinkBlob not found
@@ -314,7 +345,9 @@ export class GarbageCollector {
 
     if (unreferencedBlobs.size > 0) {
       if (!(await this.checkIfGCCanContinue(options.name, mark))) {
-        throw new Error("there is a manifest insertion going, the garbage collection shall stop");
+        throw new Error(
+          "there is a manifest insertion going, the garbage collection shall stop",
+        );
       }
 
       // GC will delete unreferenced blobs

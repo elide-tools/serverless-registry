@@ -15,7 +15,10 @@ export const getHelperR2Path = (id: string): string => {
   return `${id}-helper`;
 };
 
-export async function getChunkBlob(env: Env, chunk: Chunk): Promise<Blob | null> {
+export async function getChunkBlob(
+  env: Env,
+  chunk: Chunk,
+): Promise<Blob | null> {
   switch (chunk.type) {
     case "multi-part-chunk":
       // not necessary, this is a correct chunk always.
@@ -41,7 +44,10 @@ export async function getChunkBlob(env: Env, chunk: Chunk): Promise<Blob | null>
  * This is just a hint for workerd, the passed reader is expected to be handled by the caller to make sure it's of the same size as limitBytes
  *
  */
-export function limit(streamInput: ReadableStream, limitBytes: number): ReadableStream {
+export function limit(
+  streamInput: ReadableStream,
+  limitBytes: number,
+): ReadableStream {
   if (streamInput instanceof FixedLengthStream) return streamInput;
   const stream = new FixedLengthStream(limitBytes, {});
 

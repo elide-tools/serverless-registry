@@ -21,7 +21,9 @@ export interface Authenticator {
   checkCredentials(r: Request): Promise<AuthenticatorCheckCredentialsResponse>;
 }
 
-export function stripUsernamePasswordFromHeader(r: Request): [string, string] | { verified: false; payload: null } {
+export function stripUsernamePasswordFromHeader(
+  r: Request,
+): [string, string] | { verified: false; payload: null } {
   // first check if we have an Authorization header, this is the basis for all auth stuff in our registry
   const authorization = r.headers.get("Authorization") ?? "";
   if (!authorization) {
@@ -36,7 +38,9 @@ export function stripUsernamePasswordFromHeader(r: Request): [string, string] | 
 
   // we strictly assume that auth scheme can only be Basic
   if (!encoded || scheme !== "Basic") {
-    console.warn("failed checkCredentials: Authorization doesn't include Basic scheme");
+    console.warn(
+      "failed checkCredentials: Authorization doesn't include Basic scheme",
+    );
     return { verified: false, payload: null };
   }
 
@@ -59,7 +63,9 @@ export function stripUsernamePasswordFromHeader(r: Request): [string, string] | 
     const password = decoded.substring(index + 1);
     return [username, password];
   } catch (err) {
-    console.error(`Failure getting data from Authorization header: ${errorString(err)}`);
+    console.error(
+      `Failure getting data from Authorization header: ${errorString(err)}`,
+    );
     return { verified: false, payload: null };
   }
 }

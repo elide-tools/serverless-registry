@@ -10,34 +10,66 @@ import { encode } from "@cfworker/base64url";
 import { ManifestSchema } from "../src/manifest";
 import { limit } from "../src/chunk";
 import worker from "../index";
-import { createExecutionContext, env, waitOnExecutionContext } from "cloudflare:test";
+import {
+  createExecutionContext,
+  env,
+  waitOnExecutionContext,
+} from "cloudflare:test";
 
-async function generateManifest(name: string, schemaVersion: 1 | 2 = 2): Promise<ManifestSchema> {
+async function generateManifest(
+  name: string,
+  schemaVersion: 1 | 2 = 2,
+): Promise<ManifestSchema> {
   // Layer data
   const layerData = Math.random().toString(36).substring(2); // Random string data
   const layerSha256 = await getSHA256(layerData);
   // Upload layer data
-  const res = await fetch(createRequest("POST", `/v2/${name}/blobs/uploads/`, null, {}));
+  const res = await fetch(
+    createRequest("POST", `/v2/${name}/blobs/uploads/`, null, {}),
+  );
   expect(res.ok).toBeTruthy();
   const blob = new Blob([layerData]).stream();
   const stream = limit(blob, layerData.length);
-  const res2 = await fetch(createRequest("PATCH", res.headers.get("location")!, stream, {}));
+  const res2 = await fetch(
+    createRequest("PATCH", res.headers.get("location")!, stream, {}),
+  );
   expect(res2.ok).toBeTruthy();
-  const last = await fetch(createRequest("PUT", res2.headers.get("location")! + "&digest=" + layerSha256, null, {}));
+  const last = await fetch(
+    createRequest(
+      "PUT",
+      res2.headers.get("location")! + "&digest=" + layerSha256,
+      null,
+      {},
+    ),
+  );
   expect(last.ok).toBeTruthy();
   // Config data
   const configData = Math.random().toString(36).substring(2); // Random string data
   const configSha256 = await getSHA256(configData);
   if (schemaVersion === 2) {
     // Upload config layer
-    const configRes = await fetch(createRequest("POST", `/v2/${name}/blobs/uploads/`, null, {}));
+    const configRes = await fetch(
+      createRequest("POST", `/v2/${name}/blobs/uploads/`, null, {}),
+    );
     expect(configRes.ok).toBeTruthy();
     const configBlob = new Blob([configData]).stream();
     const configStream = limit(configBlob, configData.length);
-    const configRes2 = await fetch(createRequest("PATCH", configRes.headers.get("location")!, configStream, {}));
+    const configRes2 = await fetch(
+      createRequest(
+        "PATCH",
+        configRes.headers.get("location")!,
+        configStream,
+        {},
+      ),
+    );
     expect(configRes2.ok).toBeTruthy();
     const configLast = await fetch(
-      createRequest("PUT", configRes2.headers.get("location")! + "&digest=" + configSha256, null, {}),
+      createRequest(
+        "PUT",
+        configRes2.headers.get("location")! + "&digest=" + configSha256,
+        null,
+        {},
+      ),
     );
     expect(configLast.ok).toBeTruthy();
   }
@@ -50,15 +82,30 @@ async function generateManifest(name: string, schemaVersion: 1 | 2 = 2): Promise
     : {
         schemaVersion,
         layers: [
-          { size: layerData.length, digest: layerSha256, mediaType: "shouldbeanything" },
-          { size: layerData.length, digest: layerSha256, mediaType: "shouldbeanything" },
+          {
+            size: layerData.length,
+            digest: layerSha256,
+            mediaType: "shouldbeanything",
+          },
+          {
+            size: layerData.length,
+            digest: layerSha256,
+            mediaType: "shouldbeanything",
+          },
         ],
-        config: { size: configData.length, digest: configSha256, mediaType: "configmediatypeshouldntbechecked" },
+        config: {
+          size: configData.length,
+          digest: configSha256,
+          mediaType: "configmediatypeshouldntbechecked",
+        },
         mediaType: "shouldalsobeanythingforretrocompatibility",
       };
 }
 
-async function generateManifestList(amdManifest: ManifestSchema, armManifest: ManifestSchema): Promise<ManifestSchema> {
+async function generateManifestList(
+  amdManifest: ManifestSchema,
+  armManifest: ManifestSchema,
+): Promise<ManifestSchema> {
   const amdManifestData = JSON.stringify(amdManifest);
   const armManifestData = JSON.stringify(armManifest);
   return {
@@ -87,8 +134,17 @@ async function generateManifestList(amdManifest: ManifestSchema, armManifest: Ma
   };
 }
 
-function createRequest(method: string, path: string, body: ReadableStream | null, headers = {}) {
-  return new Request(new URL("https://registry.com" + path), { method, body: body, headers });
+function createRequest(
+  method: string,
+  path: string,
+  body: ReadableStream | null,
+  headers = {},
+) {
+  return new Request(new URL("https://registry.com" + path), {
+    method,
+    body: body,
+    headers,
+  });
 }
 
 function shuffleArray<T>(array: T[]) {
@@ -183,7 +239,11 @@ describe("v2", () => {
   });
 });
 
-async function createManifest(name: string, schema: ManifestSchema, tag?: string): Promise<{ sha256: string }> {
+async function createManifest(
+  name: string,
+  schema: ManifestSchema,
+  tag?: string,
+): Promise<{ sha256: string }> {
   const data = JSON.stringify(schema);
   const sha256 = await getSHA256(data);
   if (!tag) {
@@ -191,9 +251,14 @@ async function createManifest(name: string, schema: ManifestSchema, tag?: string
   }
 
   const res = await fetch(
-    createRequest("PUT", `/v2/${name}/manifests/${tag}`, new Blob([data]).stream(), {
-      "Content-Type": "application/gzip",
-    }),
+    createRequest(
+      "PUT",
+      `/v2/${name}/manifests/${tag}`,
+      new Blob([data]).stream(),
+      {
+        "Content-Type": "application/gzip",
+      },
+    ),
   );
   if (!res.ok) {
     throw new Error(await res.text());
@@ -218,12 +283,21 @@ function getLayersFromManifest(schema: ManifestSchema): string[] {
   return layersDigest;
 }
 
-async function mountLayersFromManifest(from: string, schema: ManifestSchema, name: string): Promise<number> {
+async function mountLayersFromManifest(
+  from: string,
+  schema: ManifestSchema,
+  name: string,
+): Promise<number> {
   const layersDigest = getLayersFromManifest(schema);
 
   for (const layerDigest of layersDigest) {
     const res = await fetch(
-      createRequest("POST", `/v2/${name}/blobs/uploads/?from=${from}&mount=${layerDigest}`, null, {}),
+      createRequest(
+        "POST",
+        `/v2/${name}/blobs/uploads/?from=${from}&mount=${layerDigest}`,
+        null,
+        {},
+      ),
     );
     if (!res.ok) {
       throw new Error(await res.text());
@@ -238,7 +312,9 @@ async function mountLayersFromManifest(from: string, schema: ManifestSchema, nam
 
 describe("v2 manifests", () => {
   test("HEAD /v2/:name/manifests/:reference NOT FOUND", async () => {
-    const response = await fetch(createRequest("GET", "/v2/notfound/manifests/reference", null));
+    const response = await fetch(
+      createRequest("GET", "/v2/notfound/manifests/reference", null),
+    );
     expect(response.status).toBe(404);
     const json = await response.json();
     expect(json).toEqual({
@@ -264,7 +340,9 @@ describe("v2 manifests", () => {
       httpMetadata: { contentType: "application/gzip" },
       sha256: sha256.slice(SHA256_PREFIX_LEN),
     });
-    const res = await fetch(createRequest("HEAD", `/v2/${name}/manifests/${reference}`, null));
+    const res = await fetch(
+      createRequest("HEAD", `/v2/${name}/manifests/${reference}`, null),
+    );
     expect(res.ok).toBeTruthy();
     expect(Object.fromEntries(res.headers)).toEqual({
       "content-length": "2",
@@ -275,56 +353,100 @@ describe("v2 manifests", () => {
   });
 
   test("PUT then DELETE /v2/:name/manifests/:reference works", async () => {
-    const { sha256 } = await createManifest("hello-world", await generateManifest("hello-world"), "hello");
+    const { sha256 } = await createManifest(
+      "hello-world",
+      await generateManifest("hello-world"),
+      "hello",
+    );
     const bindings = env as Env;
 
     {
-      const listObjects = await bindings.REGISTRY.list({ prefix: "hello-world/blobs/" });
+      const listObjects = await bindings.REGISTRY.list({
+        prefix: "hello-world/blobs/",
+      });
       expect(listObjects.objects.length).toEqual(2);
 
-      const gcRes = await fetch(new Request("http://registry.com/v2/hello-world/gc", { method: "POST" }));
+      const gcRes = await fetch(
+        new Request("http://registry.com/v2/hello-world/gc", {
+          method: "POST",
+        }),
+      );
       if (!gcRes.ok) {
         throw new Error(`${gcRes.status}: ${await gcRes.text()}`);
       }
 
-      const listObjectsAfterGC = await bindings.REGISTRY.list({ prefix: "hello-world/blobs/" });
+      const listObjectsAfterGC = await bindings.REGISTRY.list({
+        prefix: "hello-world/blobs/",
+      });
       expect(listObjectsAfterGC.objects.length).toEqual(2);
     }
 
-    expect(await bindings.REGISTRY.head(`hello-world/manifests/hello`)).toBeTruthy();
-    const res = await fetch(createRequest("DELETE", `/v2/hello-world/manifests/${sha256}`, null));
+    expect(
+      await bindings.REGISTRY.head(`hello-world/manifests/hello`),
+    ).toBeTruthy();
+    const res = await fetch(
+      createRequest("DELETE", `/v2/hello-world/manifests/${sha256}`, null),
+    );
     expect(res.status).toEqual(202);
-    expect(await bindings.REGISTRY.head(`hello-world/manifests/${sha256}`)).toBeNull();
-    expect(await bindings.REGISTRY.head(`hello-world/manifests/hello`)).toBeNull();
+    expect(
+      await bindings.REGISTRY.head(`hello-world/manifests/${sha256}`),
+    ).toBeNull();
+    expect(
+      await bindings.REGISTRY.head(`hello-world/manifests/hello`),
+    ).toBeNull();
 
-    const listObjects = await bindings.REGISTRY.list({ prefix: "hello-world/blobs/" });
+    const listObjects = await bindings.REGISTRY.list({
+      prefix: "hello-world/blobs/",
+    });
     expect(listObjects.objects.length).toEqual(2);
 
-    const listObjectsManifests = await bindings.REGISTRY.list({ prefix: "hello-world/manifests/" });
+    const listObjectsManifests = await bindings.REGISTRY.list({
+      prefix: "hello-world/manifests/",
+    });
     expect(listObjectsManifests.objects.length).toEqual(0);
 
-    const gcRes = await fetch(new Request("http://registry.com/v2/hello-world/gc", { method: "POST" }));
+    const gcRes = await fetch(
+      new Request("http://registry.com/v2/hello-world/gc", { method: "POST" }),
+    );
     if (!gcRes.ok) {
       throw new Error(`${gcRes.status}: ${await gcRes.text()}`);
     }
 
-    const listObjectsAfterGC = await bindings.REGISTRY.list({ prefix: "hello-world/blobs/" });
+    const listObjectsAfterGC = await bindings.REGISTRY.list({
+      prefix: "hello-world/blobs/",
+    });
     expect(listObjectsAfterGC.objects.length).toEqual(0);
   });
 
   test("PUT multiple parts then DELETE /v2/:name/manifests/:reference works", async () => {
-    const { sha256 } = await createManifest("hello/world", await generateManifest("hello/world"), "hello");
+    const { sha256 } = await createManifest(
+      "hello/world",
+      await generateManifest("hello/world"),
+      "hello",
+    );
     const bindings = env as Env;
-    expect(await bindings.REGISTRY.head(`hello/world/manifests/hello`)).toBeTruthy();
-    const res = await fetch(createRequest("DELETE", `/v2/hello/world/manifests/${sha256}`, null));
+    expect(
+      await bindings.REGISTRY.head(`hello/world/manifests/hello`),
+    ).toBeTruthy();
+    const res = await fetch(
+      createRequest("DELETE", `/v2/hello/world/manifests/${sha256}`, null),
+    );
     expect(res.status).toEqual(202);
-    expect(await bindings.REGISTRY.head(`hello/world/manifests/${sha256}`)).toBeNull();
-    expect(await bindings.REGISTRY.head(`hello/world/manifests/hello`)).toBeNull();
+    expect(
+      await bindings.REGISTRY.head(`hello/world/manifests/${sha256}`),
+    ).toBeNull();
+    expect(
+      await bindings.REGISTRY.head(`hello/world/manifests/hello`),
+    ).toBeNull();
   });
 
   test("PUT then list tags with GET /v2/:name/tags/list", async () => {
     const manifestList = new Set<string>();
-    const { sha256 } = await createManifest("hello-world-list", await generateManifest("hello-world-list"), `hello`);
+    const { sha256 } = await createManifest(
+      "hello-world-list",
+      await generateManifest("hello-world-list"),
+      `hello`,
+    );
     manifestList.add(sha256);
     const expectedRes = ["hello"];
     for (let i = 0; i < 40; i++) {
@@ -334,20 +456,34 @@ describe("v2 manifests", () => {
     expectedRes.sort();
     const shuffledRes = shuffleArray([...expectedRes]);
     for (const tag of shuffledRes) {
-      const { sha256 } = await createManifest("hello-world-list", await generateManifest("hello-world-list"), tag);
+      const { sha256 } = await createManifest(
+        "hello-world-list",
+        await generateManifest("hello-world-list"),
+        tag,
+      );
       manifestList.add(sha256);
     }
 
-    const tagsRes = await fetch(createRequest("GET", `/v2/hello-world-list/tags/list?n=1000`, null));
+    const tagsRes = await fetch(
+      createRequest("GET", `/v2/hello-world-list/tags/list?n=1000`, null),
+    );
     const tags = (await tagsRes.json()) as TagsList;
     expect(tags.name).toEqual("hello-world-list");
     expect(tags.tags).toEqual(expectedRes);
 
     for (const manifestSha256 of manifestList) {
-      const res = await fetch(createRequest("DELETE", `/v2/hello-world-list/manifests/${manifestSha256}`, null));
+      const res = await fetch(
+        createRequest(
+          "DELETE",
+          `/v2/hello-world-list/manifests/${manifestSha256}`,
+          null,
+        ),
+      );
       expect(res.ok).toBeTruthy();
     }
-    const tagsResEmpty = await fetch(createRequest("GET", `/v2/hello-world-list/tags/list`, null));
+    const tagsResEmpty = await fetch(
+      createRequest("GET", `/v2/hello-world-list/tags/list`, null),
+    );
     const tagsEmpty = (await tagsResEmpty.json()) as TagsList;
     expect(tagsEmpty.tags).toHaveLength(0);
   });
@@ -373,17 +509,29 @@ describe("v2 manifests", () => {
     const bindings = env as Env;
     // Check manifest count
     {
-      const manifestCountA = (await bindings.REGISTRY.list({ prefix: `${repoA}/manifests/` })).objects.length;
-      const manifestCountB = (await bindings.REGISTRY.list({ prefix: `${repoB}/manifests/` })).objects.length;
-      const manifestCountC = (await bindings.REGISTRY.list({ prefix: `${repoC}/manifests/` })).objects.length;
+      const manifestCountA = (
+        await bindings.REGISTRY.list({ prefix: `${repoA}/manifests/` })
+      ).objects.length;
+      const manifestCountB = (
+        await bindings.REGISTRY.list({ prefix: `${repoB}/manifests/` })
+      ).objects.length;
+      const manifestCountC = (
+        await bindings.REGISTRY.list({ prefix: `${repoC}/manifests/` })
+      ).objects.length;
       expect(manifestCountA).toEqual(manifestCountB);
       expect(manifestCountA).toEqual(manifestCountC);
     }
     // Check blobs count
     {
-      const layersCountA = (await bindings.REGISTRY.list({ prefix: `${repoA}/blobs/` })).objects.length;
-      const layersCountB = (await bindings.REGISTRY.list({ prefix: `${repoB}/blobs/` })).objects.length;
-      const layersCountC = (await bindings.REGISTRY.list({ prefix: `${repoC}/blobs/` })).objects.length;
+      const layersCountA = (
+        await bindings.REGISTRY.list({ prefix: `${repoA}/blobs/` })
+      ).objects.length;
+      const layersCountB = (
+        await bindings.REGISTRY.list({ prefix: `${repoB}/blobs/` })
+      ).objects.length;
+      const layersCountC = (
+        await bindings.REGISTRY.list({ prefix: `${repoC}/blobs/` })
+      ).objects.length;
       expect(layersCountA).toEqual(layersCountB);
       expect(layersCountA).toEqual(layersCountC);
     }
@@ -398,12 +546,18 @@ describe("v2 manifests", () => {
         expect(await repoLayerB.text()).toEqual(`${repoA}/blobs/${layer}`);
         expect(await repoLayerC.text()).toEqual(`${repoA}/blobs/${layer}`);
         // Check layer download follow symlink
-        const layerSource = await fetch(createRequest("GET", `/v2/${repoA}/blobs/${layer}`, null));
+        const layerSource = await fetch(
+          createRequest("GET", `/v2/${repoA}/blobs/${layer}`, null),
+        );
         expect(layerSource.ok).toBeTruthy();
         const sourceData = await layerSource.bytes();
-        const layerB = await fetch(createRequest("GET", `/v2/${repoB}/blobs/${layer}`, null));
+        const layerB = await fetch(
+          createRequest("GET", `/v2/${repoB}/blobs/${layer}`, null),
+        );
         expect(layerB.ok).toBeTruthy();
-        const layerC = await fetch(createRequest("GET", `/v2/${repoC}/blobs/${layer}`, null));
+        const layerC = await fetch(
+          createRequest("GET", `/v2/${repoC}/blobs/${layer}`, null),
+        );
         expect(layerC.ok).toBeTruthy();
         expect(await layerB.bytes()).toEqual(sourceData);
         expect(await layerC.bytes()).toEqual(sourceData);
@@ -414,64 +568,88 @@ describe("v2 manifests", () => {
 
 describe("tokens", async () => {
   test("auth payload push on /v2", async () => {
-    const { verified } = RegistryTokens.verifyPayload(createRequest("GET", "/v2/", null), {
-      capabilities: ["push"],
-    } as RegistryAuthProtocolTokenPayload);
+    const { verified } = RegistryTokens.verifyPayload(
+      createRequest("GET", "/v2/", null),
+      {
+        capabilities: ["push"],
+      } as RegistryAuthProtocolTokenPayload,
+    );
     expect(verified).toBeTruthy();
   });
 
   test("auth payload pull on /v2", async () => {
-    const { verified } = RegistryTokens.verifyPayload(createRequest("GET", "/v2/", null), {
-      capabilities: ["pull"],
-    } as RegistryAuthProtocolTokenPayload);
+    const { verified } = RegistryTokens.verifyPayload(
+      createRequest("GET", "/v2/", null),
+      {
+        capabilities: ["pull"],
+      } as RegistryAuthProtocolTokenPayload,
+    );
     expect(verified).toBeTruthy();
   });
 
   test("auth payload push on /v2/whatever with HEAD", async () => {
-    const { verified } = RegistryTokens.verifyPayload(createRequest("HEAD", "/v2/whatever", null), {
-      capabilities: ["push"],
-    } as RegistryAuthProtocolTokenPayload);
+    const { verified } = RegistryTokens.verifyPayload(
+      createRequest("HEAD", "/v2/whatever", null),
+      {
+        capabilities: ["push"],
+      } as RegistryAuthProtocolTokenPayload,
+    );
     expect(verified).toBeTruthy();
   });
 
   test("auth payload push on /v2/whatever with mutations", async () => {
     for (const mutationMethod of ["PATCH", "POST", "DELETE"]) {
-      const { verified } = RegistryTokens.verifyPayload(createRequest(mutationMethod, "/v2/whatever", null), {
-        capabilities: ["push"],
-      } as RegistryAuthProtocolTokenPayload);
+      const { verified } = RegistryTokens.verifyPayload(
+        createRequest(mutationMethod, "/v2/whatever", null),
+        {
+          capabilities: ["push"],
+        } as RegistryAuthProtocolTokenPayload,
+      );
       expect(verified).toBeTruthy();
     }
   });
 
   test("auth payload pull on /v2/whatever with mutations", async () => {
     for (const mutationMethod of ["PATCH", "POST", "DELETE"]) {
-      const { verified } = RegistryTokens.verifyPayload(createRequest(mutationMethod, "/v2/whatever", null), {
-        capabilities: ["pull"],
-      } as RegistryAuthProtocolTokenPayload);
+      const { verified } = RegistryTokens.verifyPayload(
+        createRequest(mutationMethod, "/v2/whatever", null),
+        {
+          capabilities: ["pull"],
+        } as RegistryAuthProtocolTokenPayload,
+      );
       expect(verified).toBeFalsy();
     }
   });
 
   test("auth payload push/pull on /v2/whatever with mutations", async () => {
     for (const mutationMethod of ["PATCH", "POST", "DELETE"]) {
-      const { verified } = RegistryTokens.verifyPayload(createRequest(mutationMethod, "/v2/whatever", null), {
-        capabilities: ["pull", "push"],
-      } as RegistryAuthProtocolTokenPayload);
+      const { verified } = RegistryTokens.verifyPayload(
+        createRequest(mutationMethod, "/v2/whatever", null),
+        {
+          capabilities: ["pull", "push"],
+        } as RegistryAuthProtocolTokenPayload,
+      );
       expect(verified).toBeTruthy();
     }
   });
 
   test("auth payload push on GET", async () => {
-    const { verified } = RegistryTokens.verifyPayload(createRequest("GET", "/v2/whatever", null), {
-      capabilities: ["push"],
-    } as RegistryAuthProtocolTokenPayload);
+    const { verified } = RegistryTokens.verifyPayload(
+      createRequest("GET", "/v2/whatever", null),
+      {
+        capabilities: ["push"],
+      } as RegistryAuthProtocolTokenPayload,
+    );
     expect(verified).toBeFalsy();
   });
 
   test("auth payload push/pull on GET", async () => {
-    const { verified } = RegistryTokens.verifyPayload(createRequest("GET", "/v2/whatever", null), {
-      capabilities: ["push", "pull"],
-    } as RegistryAuthProtocolTokenPayload);
+    const { verified } = RegistryTokens.verifyPayload(
+      createRequest("GET", "/v2/whatever", null),
+      {
+        capabilities: ["push", "pull"],
+      } as RegistryAuthProtocolTokenPayload,
+    );
     expect(verified).toBeTruthy();
   });
 });
@@ -493,25 +671,29 @@ test("registries configuration", async () => {
     {
       configuration: "{}",
       expected: [],
-      error: "Error parsing registries JSON: zod error: - invalid_type: Expected array, received object: ",
+      error:
+        "Error parsing registries JSON: zod error: - invalid_type: Expected array, received object: ",
       partialError: false,
     },
     {
       configuration: "[{}]",
       expected: [],
-      error: "Error parsing registries JSON: zod error: - invalid_type: Required: 0,registry",
+      error:
+        "Error parsing registries JSON: zod error: - invalid_type: Required: 0,registry",
       partialError: false,
     },
     {
       configuration: `[{ "registry": "no-url/hello-world" }]`,
       expected: [],
-      error: "Error parsing registries JSON: zod error: - invalid_string: Invalid url: 0,registry",
+      error:
+        "Error parsing registries JSON: zod error: - invalid_string: Invalid url: 0,registry",
       partialError: false,
     },
     {
       configuration: "bla bla bla no json",
       expected: [],
-      error: "Error parsing registries JSON: error SyntaxError: Unexpected token",
+      error:
+        "Error parsing registries JSON: error SyntaxError: Unexpected token",
       partialError: true,
     },
     {
@@ -617,7 +799,9 @@ describe("http client", () => {
     });
     const res = await client.manifestExists("namespace/hello", "latest");
     if ("response" in res) {
-      expect(await res.response.json()).toEqual({ status: res.response.status });
+      expect(await res.response.json()).toEqual({
+        status: res.response.status,
+      });
     }
 
     expect("exists" in res && res.exists).toBe(false);
@@ -641,7 +825,9 @@ describe("http client", () => {
     });
     const res = await client.manifestExists("namespace/hello", "latest");
     if ("response" in res) {
-      expect(await res.response.json()).toEqual({ status: res.response.status });
+      expect(await res.response.json()).toEqual({
+        status: res.response.status,
+      });
     }
 
     expect("exists" in res && res.exists).toBe(false);
@@ -650,11 +836,27 @@ describe("http client", () => {
 
 describe("push and catalog", () => {
   test("push and then use the catalog", async () => {
-    await createManifest("hello-world-main", await generateManifest("hello-world-main"), "hello");
-    await createManifest("hello-world-main", await generateManifest("hello-world-main"), "latest");
-    await createManifest("hello-world-main", await generateManifest("hello-world-main"), "hello-2");
+    await createManifest(
+      "hello-world-main",
+      await generateManifest("hello-world-main"),
+      "hello",
+    );
+    await createManifest(
+      "hello-world-main",
+      await generateManifest("hello-world-main"),
+      "latest",
+    );
+    await createManifest(
+      "hello-world-main",
+      await generateManifest("hello-world-main"),
+      "hello-2",
+    );
     await createManifest("hello", await generateManifest("hello"), "hello");
-    await createManifest("hello/hello", await generateManifest("hello/hello"), "hello");
+    await createManifest(
+      "hello/hello",
+      await generateManifest("hello/hello"),
+      "hello",
+    );
 
     const response = await fetch(createRequest("GET", "/v2/_catalog", null));
     expect(response.ok).toBeTruthy();
@@ -663,7 +865,9 @@ describe("push and catalog", () => {
       repositories: ["hello-world-main", "hello/hello", "hello"],
     });
     const expectedRepositories = body.repositories;
-    const tagsRes = await fetch(createRequest("GET", `/v2/hello-world-main/tags/list?n=1000`, null));
+    const tagsRes = await fetch(
+      createRequest("GET", `/v2/hello-world-main/tags/list?n=1000`, null),
+    );
     const tags = (await tagsRes.json()) as TagsList;
     expect(tags.name).toEqual("hello-world-main");
     expect(tags.tags).toEqual(["hello", "hello-2", "latest"]);
@@ -689,25 +893,47 @@ describe("push and catalog", () => {
     // Check blobs count
     const bindings = env as Env;
     {
-      const listObjects = await bindings.REGISTRY.list({ prefix: "hello-world-main/blobs/" });
+      const listObjects = await bindings.REGISTRY.list({
+        prefix: "hello-world-main/blobs/",
+      });
       expect(listObjects.objects.length).toEqual(6);
     }
     {
-      const listObjects = await bindings.REGISTRY.list({ prefix: "hello/blobs/" });
+      const listObjects = await bindings.REGISTRY.list({
+        prefix: "hello/blobs/",
+      });
       expect(listObjects.objects.length).toEqual(2);
     }
     {
-      const listObjects = await bindings.REGISTRY.list({ prefix: "hello/hello/blobs/" });
+      const listObjects = await bindings.REGISTRY.list({
+        prefix: "hello/hello/blobs/",
+      });
       expect(listObjects.objects.length).toEqual(2);
     }
   });
 
   test("(v1) push and then use the catalog", async () => {
-    await createManifest("hello-world-main", await generateManifest("hello-world-main", 1), "hello");
-    await createManifest("hello-world-main", await generateManifest("hello-world-main", 1), "latest");
-    await createManifest("hello-world-main", await generateManifest("hello-world-main", 1), "hello-2");
+    await createManifest(
+      "hello-world-main",
+      await generateManifest("hello-world-main", 1),
+      "hello",
+    );
+    await createManifest(
+      "hello-world-main",
+      await generateManifest("hello-world-main", 1),
+      "latest",
+    );
+    await createManifest(
+      "hello-world-main",
+      await generateManifest("hello-world-main", 1),
+      "hello-2",
+    );
     await createManifest("hello", await generateManifest("hello", 1), "hello");
-    await createManifest("hello/hello", await generateManifest("hello/hello", 1), "hello");
+    await createManifest(
+      "hello/hello",
+      await generateManifest("hello/hello", 1),
+      "hello",
+    );
 
     const response = await fetch(createRequest("GET", "/v2/_catalog", null));
     expect(response.ok).toBeTruthy();
@@ -716,7 +942,9 @@ describe("push and catalog", () => {
       repositories: ["hello-world-main", "hello/hello", "hello"],
     });
     const expectedRepositories = body.repositories;
-    const tagsRes = await fetch(createRequest("GET", `/v2/hello-world-main/tags/list?n=1000`, null));
+    const tagsRes = await fetch(
+      createRequest("GET", `/v2/hello-world-main/tags/list?n=1000`, null),
+    );
     const tags = (await tagsRes.json()) as TagsList;
     expect(tags.name).toEqual("hello-world-main");
     expect(tags.tags).toEqual(["hello", "hello-2", "latest"]);
@@ -742,21 +970,30 @@ describe("push and catalog", () => {
     // Check blobs count
     const bindings = env as Env;
     {
-      const listObjects = await bindings.REGISTRY.list({ prefix: "hello-world-main/blobs/" });
+      const listObjects = await bindings.REGISTRY.list({
+        prefix: "hello-world-main/blobs/",
+      });
       expect(listObjects.objects.length).toEqual(3);
     }
     {
-      const listObjects = await bindings.REGISTRY.list({ prefix: "hello/blobs/" });
+      const listObjects = await bindings.REGISTRY.list({
+        prefix: "hello/blobs/",
+      });
       expect(listObjects.objects.length).toEqual(1);
     }
     {
-      const listObjects = await bindings.REGISTRY.list({ prefix: "hello/hello/blobs/" });
+      const listObjects = await bindings.REGISTRY.list({
+        prefix: "hello/hello/blobs/",
+      });
       expect(listObjects.objects.length).toEqual(1);
     }
   });
 });
 
-async function createManifestList(name: string, tag?: string): Promise<string[]> {
+async function createManifestList(
+  name: string,
+  tag?: string,
+): Promise<string[]> {
   // Generate manifest
   const amdManifest = await generateManifest(name);
   const armManifest = await generateManifest(name);
@@ -779,31 +1016,45 @@ describe("v2 manifest-list", () => {
     const manifestsSha256 = await createManifestList(name, tag);
 
     const bindings = env as Env;
-    expect(await bindings.REGISTRY.head(`${name}/manifests/${tag}`)).toBeTruthy();
+    expect(
+      await bindings.REGISTRY.head(`${name}/manifests/${tag}`),
+    ).toBeTruthy();
     for (const digest of manifestsSha256) {
-      expect(await bindings.REGISTRY.head(`${name}/manifests/${digest}`)).toBeTruthy();
+      expect(
+        await bindings.REGISTRY.head(`${name}/manifests/${digest}`),
+      ).toBeTruthy();
     }
 
     // Delete tag only
-    const res = await fetch(createRequest("DELETE", `/v2/${name}/manifests/${tag}`, null));
+    const res = await fetch(
+      createRequest("DELETE", `/v2/${name}/manifests/${tag}`, null),
+    );
     expect(res.status).toEqual(202);
     expect(await bindings.REGISTRY.head(`${name}/manifests/${tag}`)).toBeNull();
     for (const digest of manifestsSha256) {
-      expect(await bindings.REGISTRY.head(`${name}/manifests/${digest}`)).toBeTruthy();
+      expect(
+        await bindings.REGISTRY.head(`${name}/manifests/${digest}`),
+      ).toBeTruthy();
     }
 
     // Check blobs count (2 config and 2 layer)
     {
-      const listObjects = await bindings.REGISTRY.list({ prefix: `${name}/blobs/` });
+      const listObjects = await bindings.REGISTRY.list({
+        prefix: `${name}/blobs/`,
+      });
       expect(listObjects.objects.length).toEqual(4);
     }
 
     for (const digest of manifestsSha256) {
-      const res = await fetch(createRequest("DELETE", `/v2/${name}/manifests/${digest}`, null));
+      const res = await fetch(
+        createRequest("DELETE", `/v2/${name}/manifests/${digest}`, null),
+      );
       expect(res.status).toEqual(202);
     }
     for (const digest of manifestsSha256) {
-      expect(await bindings.REGISTRY.head(`${name}/manifests/${digest}`)).toBeNull();
+      expect(
+        await bindings.REGISTRY.head(`${name}/manifests/${digest}`),
+      ).toBeNull();
     }
   });
 
@@ -825,11 +1076,15 @@ describe("v2 manifest-list", () => {
     await mountLayersFromManifest(preprodName, armManifest, prodName);
     // Check blobs count (2 config and 2 layer)
     {
-      const listObjects = await bindings.REGISTRY.list({ prefix: `${preprodName}/blobs/` });
+      const listObjects = await bindings.REGISTRY.list({
+        prefix: `${preprodName}/blobs/`,
+      });
       expect(listObjects.objects.length).toEqual(4);
     }
     {
-      const listObjects = await bindings.REGISTRY.list({ prefix: `${prodName}/blobs/` });
+      const listObjects = await bindings.REGISTRY.list({
+        prefix: `${prodName}/blobs/`,
+      });
       expect(listObjects.objects.length).toEqual(4);
     }
 
@@ -841,28 +1096,45 @@ describe("v2 manifest-list", () => {
     const manifestList = await generateManifestList(amdManifest, armManifest);
     const { sha256 } = await createManifest(prodName, manifestList, tag);
 
-    expect(await bindings.REGISTRY.head(`${prodName}/manifests/${tag}`)).toBeTruthy();
-    expect(await bindings.REGISTRY.head(`${prodName}/manifests/${sha256}`)).toBeTruthy();
-    expect(await bindings.REGISTRY.head(`${prodName}/manifests/${amdSha256}`)).toBeTruthy();
-    expect(await bindings.REGISTRY.head(`${prodName}/manifests/${armSha256}`)).toBeTruthy();
+    expect(
+      await bindings.REGISTRY.head(`${prodName}/manifests/${tag}`),
+    ).toBeTruthy();
+    expect(
+      await bindings.REGISTRY.head(`${prodName}/manifests/${sha256}`),
+    ).toBeTruthy();
+    expect(
+      await bindings.REGISTRY.head(`${prodName}/manifests/${amdSha256}`),
+    ).toBeTruthy();
+    expect(
+      await bindings.REGISTRY.head(`${prodName}/manifests/${armSha256}`),
+    ).toBeTruthy();
 
     // Check symlink binding
     expect(amdManifest.schemaVersion === 2).toBeTruthy();
     expect("manifests" in amdManifest).toBeFalsy();
     if (amdManifest.schemaVersion === 2 && !("manifests" in amdManifest)) {
       const layerDigest = amdManifest.layers[0].digest;
-      const layerSource = await fetch(createRequest("GET", `/v2/${preprodName}/blobs/${layerDigest}`, null));
+      const layerSource = await fetch(
+        createRequest("GET", `/v2/${preprodName}/blobs/${layerDigest}`, null),
+      );
       expect(layerSource.ok).toBeTruthy();
-      const layerLinked = await fetch(createRequest("GET", `/v2/${prodName}/blobs/${layerDigest}`, null));
+      const layerLinked = await fetch(
+        createRequest("GET", `/v2/${prodName}/blobs/${layerDigest}`, null),
+      );
       expect(layerLinked.ok).toBeTruthy();
       expect(await layerLinked.text()).toEqual(await layerSource.text());
     }
   });
 });
 
-async function runGarbageCollector(name: string, mode: "unreferenced" | "untagged" | "both"): Promise<void> {
+async function runGarbageCollector(
+  name: string,
+  mode: "unreferenced" | "untagged" | "both",
+): Promise<void> {
   if (mode === "unreferenced" || mode === "both") {
-    const gcRes = await fetch(createRequest("POST", `/v2/${name}/gc?mode=unreferenced`, null));
+    const gcRes = await fetch(
+      createRequest("POST", `/v2/${name}/gc?mode=unreferenced`, null),
+    );
     if (!gcRes.ok) {
       throw new Error(`${gcRes.status}: ${await gcRes.text()}`);
     }
@@ -871,7 +1143,9 @@ async function runGarbageCollector(name: string, mode: "unreferenced" | "untagge
     expect(response.success).toBeTruthy();
   }
   if (mode === "untagged" || mode === "both") {
-    const gcRes = await fetch(createRequest("POST", `/v2/${name}/gc?mode=untagged`, null));
+    const gcRes = await fetch(
+      createRequest("POST", `/v2/${name}/gc?mode=untagged`, null),
+    );
     if (!gcRes.ok) {
       throw new Error(`${gcRes.status}: ${await gcRes.text()}`);
     }
@@ -892,56 +1166,87 @@ describe("garbage collector", () => {
     const bindings = env as Env;
     // Check no action needed
     {
-      const listManifests = await bindings.REGISTRY.list({ prefix: `${name}/manifests/` });
+      const listManifests = await bindings.REGISTRY.list({
+        prefix: `${name}/manifests/`,
+      });
       expect(listManifests.objects.length).toEqual(5);
-      const listBlobs = await bindings.REGISTRY.list({ prefix: `${name}/blobs/` });
+      const listBlobs = await bindings.REGISTRY.list({
+        prefix: `${name}/blobs/`,
+      });
       expect(listBlobs.objects.length).toEqual(4);
     }
 
     await runGarbageCollector(name, "both");
 
     {
-      const listManifests = await bindings.REGISTRY.list({ prefix: `${name}/manifests/` });
+      const listManifests = await bindings.REGISTRY.list({
+        prefix: `${name}/manifests/`,
+      });
       expect(listManifests.objects.length).toEqual(5);
-      const listBlobs = await bindings.REGISTRY.list({ prefix: `${name}/blobs/` });
+      const listBlobs = await bindings.REGISTRY.list({
+        prefix: `${name}/blobs/`,
+      });
       expect(listBlobs.objects.length).toEqual(4);
     }
     // Removing manifest tag - GC untagged mode will clean image
-    const res = await fetch(createRequest("DELETE", `/v2/${name}/manifests/v1`, null));
+    const res = await fetch(
+      createRequest("DELETE", `/v2/${name}/manifests/v1`, null),
+    );
     expect(res.status).toEqual(202);
     await runGarbageCollector(name, "unreferenced");
     {
-      const listManifests = await bindings.REGISTRY.list({ prefix: `${name}/manifests/` });
+      const listManifests = await bindings.REGISTRY.list({
+        prefix: `${name}/manifests/`,
+      });
       expect(listManifests.objects.length).toEqual(4);
-      const listBlobs = await bindings.REGISTRY.list({ prefix: `${name}/blobs/` });
+      const listBlobs = await bindings.REGISTRY.list({
+        prefix: `${name}/blobs/`,
+      });
       expect(listBlobs.objects.length).toEqual(4);
     }
     await runGarbageCollector(name, "untagged");
     {
-      const listManifests = await bindings.REGISTRY.list({ prefix: `${name}/manifests/` });
+      const listManifests = await bindings.REGISTRY.list({
+        prefix: `${name}/manifests/`,
+      });
       expect(listManifests.objects.length).toEqual(3);
-      const listBlobs = await bindings.REGISTRY.list({ prefix: `${name}/blobs/` });
+      const listBlobs = await bindings.REGISTRY.list({
+        prefix: `${name}/blobs/`,
+      });
       expect(listBlobs.objects.length).toEqual(2);
     }
     // Add an unreferenced blobs
     {
-      const { sha256: tempSha256 } = await createManifest(name, await generateManifest(name));
-      const res = await fetch(createRequest("DELETE", `/v2/${name}/manifests/${tempSha256}`, null));
+      const { sha256: tempSha256 } = await createManifest(
+        name,
+        await generateManifest(name),
+      );
+      const res = await fetch(
+        createRequest("DELETE", `/v2/${name}/manifests/${tempSha256}`, null),
+      );
       expect(res.status).toEqual(202);
     }
     // Removed manifest - GC unreferenced mode will clean blobs
     {
-      const listManifests = await bindings.REGISTRY.list({ prefix: `${name}/manifests/` });
+      const listManifests = await bindings.REGISTRY.list({
+        prefix: `${name}/manifests/`,
+      });
       expect(listManifests.objects.length).toEqual(3);
-      const listBlobs = await bindings.REGISTRY.list({ prefix: `${name}/blobs/` });
+      const listBlobs = await bindings.REGISTRY.list({
+        prefix: `${name}/blobs/`,
+      });
       expect(listBlobs.objects.length).toEqual(4);
     }
 
     await runGarbageCollector(name, "unreferenced");
     {
-      const listManifests = await bindings.REGISTRY.list({ prefix: `${name}/manifests/` });
+      const listManifests = await bindings.REGISTRY.list({
+        prefix: `${name}/manifests/`,
+      });
       expect(listManifests.objects.length).toEqual(3);
-      const listBlobs = await bindings.REGISTRY.list({ prefix: `${name}/blobs/` });
+      const listBlobs = await bindings.REGISTRY.list({
+        prefix: `${name}/blobs/`,
+      });
       expect(listBlobs.objects.length).toEqual(2);
     }
   });
@@ -952,18 +1257,26 @@ describe("garbage collector", () => {
     const bindings = env as Env;
     // Check no action needed
     {
-      const listManifests = await bindings.REGISTRY.list({ prefix: `${name}/manifests/` });
+      const listManifests = await bindings.REGISTRY.list({
+        prefix: `${name}/manifests/`,
+      });
       expect(listManifests.objects.length).toEqual(4);
-      const listBlobs = await bindings.REGISTRY.list({ prefix: `${name}/blobs/` });
+      const listBlobs = await bindings.REGISTRY.list({
+        prefix: `${name}/blobs/`,
+      });
       expect(listBlobs.objects.length).toEqual(4);
     }
 
     await runGarbageCollector(name, "both");
 
     {
-      const listManifests = await bindings.REGISTRY.list({ prefix: `${name}/manifests/` });
+      const listManifests = await bindings.REGISTRY.list({
+        prefix: `${name}/manifests/`,
+      });
       expect(listManifests.objects.length).toEqual(4);
-      const listBlobs = await bindings.REGISTRY.list({ prefix: `${name}/blobs/` });
+      const listBlobs = await bindings.REGISTRY.list({
+        prefix: `${name}/blobs/`,
+      });
       expect(listBlobs.objects.length).toEqual(4);
     }
 
@@ -972,53 +1285,77 @@ describe("garbage collector", () => {
     {
       const manifests = await createManifestList(name, "bis");
       for (const manifest of manifests) {
-        const res = await fetch(createRequest("DELETE", `/v2/${name}/manifests/${manifest}`, null));
+        const res = await fetch(
+          createRequest("DELETE", `/v2/${name}/manifests/${manifest}`, null),
+        );
         expect(res.status).toEqual(202);
       }
     }
     {
-      const listManifests = await bindings.REGISTRY.list({ prefix: `${name}/manifests/` });
+      const listManifests = await bindings.REGISTRY.list({
+        prefix: `${name}/manifests/`,
+      });
       expect(listManifests.objects.length).toEqual(4);
-      const listBlobs = await bindings.REGISTRY.list({ prefix: `${name}/blobs/` });
+      const listBlobs = await bindings.REGISTRY.list({
+        prefix: `${name}/blobs/`,
+      });
       expect(listBlobs.objects.length).toEqual(8);
     }
 
     await runGarbageCollector(name, "unreferenced");
 
     {
-      const listManifests = await bindings.REGISTRY.list({ prefix: `${name}/manifests/` });
+      const listManifests = await bindings.REGISTRY.list({
+        prefix: `${name}/manifests/`,
+      });
       expect(listManifests.objects.length).toEqual(4);
-      const listBlobs = await bindings.REGISTRY.list({ prefix: `${name}/blobs/` });
+      const listBlobs = await bindings.REGISTRY.list({
+        prefix: `${name}/blobs/`,
+      });
       expect(listBlobs.objects.length).toEqual(4);
     }
 
     // Add untagged manifest
     {
-      const res = await fetch(createRequest("DELETE", `/v2/${name}/manifests/app`, null));
+      const res = await fetch(
+        createRequest("DELETE", `/v2/${name}/manifests/app`, null),
+      );
       expect(res.status).toEqual(202);
     }
     {
-      const listManifests = await bindings.REGISTRY.list({ prefix: `${name}/manifests/` });
+      const listManifests = await bindings.REGISTRY.list({
+        prefix: `${name}/manifests/`,
+      });
       expect(listManifests.objects.length).toEqual(3);
-      const listBlobs = await bindings.REGISTRY.list({ prefix: `${name}/blobs/` });
+      const listBlobs = await bindings.REGISTRY.list({
+        prefix: `${name}/blobs/`,
+      });
       expect(listBlobs.objects.length).toEqual(4);
     }
 
     await runGarbageCollector(name, "unreferenced");
 
     {
-      const listManifests = await bindings.REGISTRY.list({ prefix: `${name}/manifests/` });
+      const listManifests = await bindings.REGISTRY.list({
+        prefix: `${name}/manifests/`,
+      });
       expect(listManifests.objects.length).toEqual(3);
-      const listBlobs = await bindings.REGISTRY.list({ prefix: `${name}/blobs/` });
+      const listBlobs = await bindings.REGISTRY.list({
+        prefix: `${name}/blobs/`,
+      });
       expect(listBlobs.objects.length).toEqual(4);
     }
 
     await runGarbageCollector(name, "untagged");
 
     {
-      const listManifests = await bindings.REGISTRY.list({ prefix: `${name}/manifests/` });
+      const listManifests = await bindings.REGISTRY.list({
+        prefix: `${name}/manifests/`,
+      });
       expect(listManifests.objects.length).toEqual(0);
-      const listBlobs = await bindings.REGISTRY.list({ prefix: `${name}/blobs/` });
+      const listBlobs = await bindings.REGISTRY.list({
+        prefix: `${name}/blobs/`,
+      });
       expect(listBlobs.objects.length).toEqual(0);
     }
   });
@@ -1051,66 +1388,108 @@ describe("garbage collector", () => {
 
     // Check no action needed
     {
-      const listManifests = await bindings.REGISTRY.list({ prefix: `${preprodBame}/manifests/` });
+      const listManifests = await bindings.REGISTRY.list({
+        prefix: `${preprodBame}/manifests/`,
+      });
       expect(listManifests.objects.length).toEqual(4);
-      const listBlobs = await bindings.REGISTRY.list({ prefix: `${preprodBame}/blobs/` });
+      const listBlobs = await bindings.REGISTRY.list({
+        prefix: `${preprodBame}/blobs/`,
+      });
       expect(listBlobs.objects.length).toEqual(4);
     }
 
     await runGarbageCollector(preprodBame, "both");
 
     {
-      const listManifests = await bindings.REGISTRY.list({ prefix: `${preprodBame}/manifests/` });
+      const listManifests = await bindings.REGISTRY.list({
+        prefix: `${preprodBame}/manifests/`,
+      });
       expect(listManifests.objects.length).toEqual(4);
-      const listBlobs = await bindings.REGISTRY.list({ prefix: `${preprodBame}/blobs/` });
+      const listBlobs = await bindings.REGISTRY.list({
+        prefix: `${preprodBame}/blobs/`,
+      });
       expect(listBlobs.objects.length).toEqual(4);
     }
 
     // Untagged preprod repo
     {
-      const res = await fetch(createRequest("DELETE", `/v2/${preprodBame}/manifests/${tag}-amd`, null));
+      const res = await fetch(
+        createRequest(
+          "DELETE",
+          `/v2/${preprodBame}/manifests/${tag}-amd`,
+          null,
+        ),
+      );
       expect(res.status).toEqual(202);
-      const res2 = await fetch(createRequest("DELETE", `/v2/${preprodBame}/manifests/${tag}-arm`, null));
+      const res2 = await fetch(
+        createRequest(
+          "DELETE",
+          `/v2/${preprodBame}/manifests/${tag}-arm`,
+          null,
+        ),
+      );
       expect(res2.status).toEqual(202);
     }
     await runGarbageCollector(preprodBame, "unreferenced");
     {
-      const listManifests = await bindings.REGISTRY.list({ prefix: `${preprodBame}/manifests/` });
+      const listManifests = await bindings.REGISTRY.list({
+        prefix: `${preprodBame}/manifests/`,
+      });
       expect(listManifests.objects.length).toEqual(2);
-      const listBlobs = await bindings.REGISTRY.list({ prefix: `${preprodBame}/blobs/` });
+      const listBlobs = await bindings.REGISTRY.list({
+        prefix: `${preprodBame}/blobs/`,
+      });
       expect(listBlobs.objects.length).toEqual(4);
     }
     await runGarbageCollector(preprodBame, "untagged");
     {
-      const listManifests = await bindings.REGISTRY.list({ prefix: `${preprodBame}/manifests/` });
+      const listManifests = await bindings.REGISTRY.list({
+        prefix: `${preprodBame}/manifests/`,
+      });
       expect(listManifests.objects.length).toEqual(0);
-      const listBlobs = await bindings.REGISTRY.list({ prefix: `${preprodBame}/blobs/` });
+      const listBlobs = await bindings.REGISTRY.list({
+        prefix: `${preprodBame}/blobs/`,
+      });
       expect(listBlobs.objects.length).toEqual(4);
     }
 
     // Untagged prod repo
     {
-      const res = await fetch(createRequest("DELETE", `/v2/${prodName}/manifests/${tag}`, null));
+      const res = await fetch(
+        createRequest("DELETE", `/v2/${prodName}/manifests/${tag}`, null),
+      );
       expect(res.status).toEqual(202);
     }
     {
-      const listManifests = await bindings.REGISTRY.list({ prefix: `${prodName}/manifests/` });
+      const listManifests = await bindings.REGISTRY.list({
+        prefix: `${prodName}/manifests/`,
+      });
       expect(listManifests.objects.length).toEqual(3);
-      const listBlobs = await bindings.REGISTRY.list({ prefix: `${prodName}/blobs/` });
+      const listBlobs = await bindings.REGISTRY.list({
+        prefix: `${prodName}/blobs/`,
+      });
       expect(listBlobs.objects.length).toEqual(4);
     }
     await runGarbageCollector(prodName, "untagged");
     {
-      const listManifests = await bindings.REGISTRY.list({ prefix: `${prodName}/manifests/` });
+      const listManifests = await bindings.REGISTRY.list({
+        prefix: `${prodName}/manifests/`,
+      });
       expect(listManifests.objects.length).toEqual(0);
-      const listBlobs = await bindings.REGISTRY.list({ prefix: `${prodName}/blobs/` });
+      const listBlobs = await bindings.REGISTRY.list({
+        prefix: `${prodName}/blobs/`,
+      });
       expect(listBlobs.objects.length).toEqual(0);
     }
     await runGarbageCollector(preprodBame, "unreferenced");
     {
-      const listManifests = await bindings.REGISTRY.list({ prefix: `${prodName}/manifests/` });
+      const listManifests = await bindings.REGISTRY.list({
+        prefix: `${prodName}/manifests/`,
+      });
       expect(listManifests.objects.length).toEqual(0);
-      const listBlobs = await bindings.REGISTRY.list({ prefix: `${prodName}/blobs/` });
+      const listBlobs = await bindings.REGISTRY.list({
+        prefix: `${prodName}/blobs/`,
+      });
       expect(listBlobs.objects.length).toEqual(0);
     }
   });
@@ -1130,7 +1509,9 @@ test("docker.io", () => {
   for (const testCase of t) {
     const isDocker = isDockerDotIO(new URL(testCase[0]));
     if (isDocker !== testCase[1]) {
-      throw new Error(`Expected ${testCase[1]} on ${testCase[0]} but got ${isDocker}`);
+      throw new Error(
+        `Expected ${testCase[1]} on ${testCase[0]} but got ${isDocker}`,
+      );
     }
   }
 });

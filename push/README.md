@@ -13,7 +13,7 @@ Then:
 
 ```bash
 docker tag my-image:latest $IMAGE_URI
-echo $PASSWORD | USERNAME_REGISTRY=<your-configured-username> bun run index.ts $IMAGE_URI
+echo $PASSWORD | USERNAME_REGISTRY= < your-configured-username > bun run index.ts $IMAGE_URI
 ```
 
 ## How does it work

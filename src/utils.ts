@@ -20,7 +20,10 @@ export async function readableToBlob(
   return new Blob(blobs);
 }
 
-export async function readerToBlob(readaleStream: ReadableStream, ...multiwriters: WritableStreamDefaultWriter[]) {
+export async function readerToBlob(
+  readaleStream: ReadableStream,
+  ...multiwriters: WritableStreamDefaultWriter[]
+) {
   const reader = readaleStream.getReader();
   const blobs = [];
   while (true) {
@@ -48,7 +51,10 @@ export async function consumeReadable(reader: ReadableStreamDefaultReader) {
 export function errorString(err: unknown): string {
   if (err instanceof ZodError) {
     const errorsMsg = err.errors
-      .map((zodIssue) => `- ${zodIssue.code}: ${zodIssue.message}: ${zodIssue.path}`)
+      .map(
+        (zodIssue) =>
+          `- ${zodIssue.code}: ${zodIssue.message}: ${zodIssue.path}`,
+      )
       .join("\n\t");
     return `zod error: ${errorsMsg}`;
   }
@@ -60,8 +66,12 @@ export function errorString(err: unknown): string {
   return "unknown error: " + JSON.stringify(err);
 }
 
-export async function wrap<T, E = unknown>(fn: Promise<T>): Promise<[T, null] | [null, E]> {
-  return fn.then((data) => [data, null] as [T, null]).catch((err) => [null, err as unknown as E] as [null, E]);
+export async function wrap<T, E = unknown>(
+  fn: Promise<T>,
+): Promise<[T, null] | [null, E]> {
+  return fn
+    .then((data) => [data, null] as [T, null])
+    .catch((err) => [null, err as unknown as E] as [null, E]);
 }
 
 export function jsonHeaders(): { "content-type": "application/json" } {

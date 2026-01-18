@@ -117,13 +117,22 @@ export interface Registry {
   // All read operations supported by a registry
 
   // checks whether the manifest exists in the registry
-  manifestExists(namespace: string, tag: string): Promise<CheckManifestResponse | RegistryError>;
+  manifestExists(
+    namespace: string,
+    tag: string,
+  ): Promise<CheckManifestResponse | RegistryError>;
 
   // listing repositories in the registry
-  listRepositories(limit?: number, last?: string): Promise<ListRepositoriesResponse | RegistryError>;
+  listRepositories(
+    limit?: number,
+    last?: string,
+  ): Promise<ListRepositoriesResponse | RegistryError>;
 
   // gets the manifest by namespace + digest
-  getManifest(namespace: string, digest: string): Promise<GetManifestResponse | RegistryError>;
+  getManifest(
+    namespace: string,
+    digest: string,
+  ): Promise<GetManifestResponse | RegistryError>;
 
   // mount an existing layer from a repository to another
   mountExistingLayer(
@@ -133,10 +142,16 @@ export interface Registry {
   ): Promise<RegistryError | FinishedUploadObject>;
 
   // checks that a layer exists
-  layerExists(namespace: string, digest: string): Promise<CheckLayerResponse | RegistryError>;
+  layerExists(
+    namespace: string,
+    digest: string,
+  ): Promise<CheckLayerResponse | RegistryError>;
 
   // get a layer stream from the registry
-  getLayer(namespace: string, digest: string): Promise<GetLayerResponse | RegistryError>;
+  getLayer(
+    namespace: string,
+    digest: string,
+  ): Promise<GetLayerResponse | RegistryError>;
 
   // put manifest uploads a manifest into the registry
   putManifest(
@@ -153,10 +168,16 @@ export interface Registry {
   startUpload(namespace: string): Promise<UploadObject | RegistryError>;
 
   // cancels an upload
-  cancelUpload(namespace: string, uploadId: UploadId): Promise<true | RegistryError>;
+  cancelUpload(
+    namespace: string,
+    uploadId: UploadId,
+  ): Promise<true | RegistryError>;
 
   // gets an existing upload
-  getUpload(namespace: string, uploadId: UploadId): Promise<UploadObject | RegistryError>;
+  getUpload(
+    namespace: string,
+    uploadId: UploadId,
+  ): Promise<UploadObject | RegistryError>;
 
   // does a monolithic upload. if it returns false it means that the registry doesn't
   // support it and the caller should try to fallback to chunked upload
@@ -189,7 +210,10 @@ export interface Registry {
     length?: number,
   ): Promise<FinishedUploadObject | RegistryError>;
 
-  garbageCollection(namespace: string, mode: GarbageCollectionMode): Promise<boolean>;
+  garbageCollection(
+    namespace: string,
+    mode: GarbageCollectionMode,
+  ): Promise<boolean>;
 }
 
 export function wrapError(method: string, err: unknown): RegistryError {

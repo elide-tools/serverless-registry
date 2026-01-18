@@ -7,9 +7,7 @@ compatibility_flags = ["nodejs_compat"]
 
 ## Production
 [env.production]
-r2_buckets = [
-  { binding = "REGISTRY", bucket_name = "" }
-]
+r2_buckets = [{ binding = "REGISTRY", bucket_name = "" }]
 
 [env.production.vars]
 JWT_REGISTRY_TOKENS_PUBLIC_KEY = ""

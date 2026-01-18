@@ -24,7 +24,9 @@ if (process.stdin.isTTY) {
 }
 
 if (!username || !password) {
-  console.error("Username or password not defined, push won't be able to authenticate with registry");
+  console.error(
+    "Username or password not defined, push won't be able to authenticate with registry",
+  );
   if (!process.env["SKIP_AUTH"]) {
     process.exit(1);
   }
@@ -39,7 +41,8 @@ if (image === undefined) {
 // Check if the image has already been saved from Docker
 
 console.log("Preparing image...");
-const imageMetadataRes = await $`docker images --format "{{ .ID }}" ${image}`.quiet();
+const imageMetadataRes =
+  await $`docker images --format "{{ .ID }}" ${image}`.quiet();
 if (imageMetadataRes.exitCode !== 0) {
   console.error(
     "Image",
@@ -51,7 +54,11 @@ if (imageMetadataRes.exitCode !== 0) {
 
 const imageID = imageMetadataRes.text();
 if (imageID === "") {
-  console.error("Image", image, "doesn't exist. Check your existing images with\n\n\tdocker images");
+  console.error(
+    "Image",
+    image,
+    "doesn't exist. Check your existing images with\n\n\tdocker images",
+  );
   process.exit(1);
 }
 
@@ -85,7 +92,9 @@ type DockerSaveConfigManifest = {
 }[];
 
 import path from "path";
-const manifests = (await Bun.file(path.join(imagePath, "manifest.json")).json()) as DockerSaveConfigManifest;
+const manifests = (await Bun.file(
+  path.join(imagePath, "manifest.json"),
+).json()) as DockerSaveConfigManifest;
 
 if (manifests.length == 0) {
   console.error("unexpected manifest of length 0");
@@ -119,7 +128,9 @@ for (const layer of manifest.Layers) {
       //   2. <layer>/layer.tar
       //
       // This handles both cases.
-      let layerName = layer.endsWith(".tar") ? path.dirname(layer) : path.basename(layer);
+      let layerName = layer.endsWith(".tar")
+        ? path.dirname(layer)
+        : path.basename(layer);
 
       const layerCachePath = path.join(cacheFolder, layerName + "-ptr");
       {
@@ -170,7 +181,9 @@ for (const layer of manifest.Layers) {
             close() {
               return new Promise(async (res) => {
                 // Flush before end
-                await new Promise((resFlush) => gzipStream.flush(() => resFlush(true)));
+                await new Promise((resFlush) =>
+                  gzipStream.flush(() => resFlush(true)),
+                );
                 // End the stream
                 gzipStream.end(res);
               });
@@ -204,9 +217,13 @@ const pushTasks = [];
 const url = new URL(proto + "://" + image);
 const imageHost = url.host;
 const imageRepositoryPathParts = url.pathname.split(":");
-const imageRepositoryPath = imageRepositoryPathParts.slice(0, imageRepositoryPathParts.length - 1).join(":");
+const imageRepositoryPath = imageRepositoryPathParts
+  .slice(0, imageRepositoryPathParts.length - 1)
+  .join(":");
 const tag =
-  imageRepositoryPathParts.length > 1 ? imageRepositoryPathParts[imageRepositoryPathParts.length - 1] : "latest";
+  imageRepositoryPathParts.length > 1
+    ? imageRepositoryPathParts[imageRepositoryPathParts.length - 1]
+    : "latest";
 
 import fetchNode from "node-fetch";
 import { ReadableLimiter } from "./limiter";
@@ -216,7 +233,11 @@ const cred = `Basic ${btoa(`${username}:${password}`)}`;
 console.log("Starting push to remote");
 // pushLayer accepts the target digest, the stream to read from, and the total layer size.
 // It will do the entire push process by itself.
-async function pushLayer(layerDigest: string, readableStream: ReadableStream, totalLayerSize: number) {
+async function pushLayer(
+  layerDigest: string,
+  readableStream: ReadableStream,
+  totalLayerSize: number,
+) {
   const headers = new Headers({
     authorization: cred,
   });
@@ -227,7 +248,9 @@ async function pushLayer(layerDigest: string, readableStream: ReadableStream, to
   });
 
   if (!layerExistsResponse.ok && layerExistsResponse.status !== 404) {
-    throw new Error(`${layerExistsURL} responded ${layerExistsResponse.status}: ${await layerExistsResponse.text()}`);
+    throw new Error(
+      `${layerExistsURL} responded ${layerExistsResponse.status}: ${await layerExistsResponse.text()}`,
+    );
   }
 
   if (layerExistsResponse.ok) {
@@ -246,7 +269,10 @@ async function pushLayer(layerDigest: string, readableStream: ReadableStream, to
     );
   }
 
-  const maxChunkLength = +(createUploadResponse.headers.get("oci-chunk-max-length") ?? 100 * 1024 * 1024);
+  const maxChunkLength = +(
+    createUploadResponse.headers.get("oci-chunk-max-length") ??
+    100 * 1024 * 1024
+  );
   if (isNaN(maxChunkLength)) {
     throw new Error(`oci-chunk-max-length header is malformed (not a number)`);
   }
@@ -265,7 +291,9 @@ async function pushLayer(layerDigest: string, readableStream: ReadableStream, to
     return location;
   }
 
-  let location = createUploadResponse.headers.get("location") ?? `/v2${imageRepositoryPath}/blobs/uploads/${uploadId}`;
+  let location =
+    createUploadResponse.headers.get("location") ??
+    `/v2${imageRepositoryPath}/blobs/uploads/${uploadId}`;
   const maxToWrite = Math.min(maxChunkLength, totalLayerSize);
   let end = Math.min(maxChunkLength, totalLayerSize);
   let written = 0;
@@ -273,7 +301,11 @@ async function pushLayer(layerDigest: string, readableStream: ReadableStream, to
   let totalLayerSizeLeft = totalLayerSize;
   while (totalLayerSizeLeft > 0) {
     const range = `0-${Math.min(end, totalLayerSize) - 1}`;
-    const current = new ReadableLimiter(reader as ReadableStreamDefaultReader, maxToWrite, previousReadable);
+    const current = new ReadableLimiter(
+      reader as ReadableStreamDefaultReader,
+      maxToWrite,
+      previousReadable,
+    );
     const patchChunkUploadURL = parseLocation(location);
     // we have to do fetchNode because Bun doesn't allow setting custom Content-Length.
     // https://github.com/oven-sh/bun/issues/10507
@@ -281,8 +313,8 @@ async function pushLayer(layerDigest: string, readableStream: ReadableStream, to
       method: "PATCH",
       body: current,
       headers: new Headers({
-        "range": range,
-        "authorization": cred,
+        range: range,
+        authorization: cred,
         "content-length": `${Math.min(totalLayerSizeLeft, maxToWrite)}`,
       }),
     });
@@ -294,7 +326,9 @@ async function pushLayer(layerDigest: string, readableStream: ReadableStream, to
 
     const rangeResponse = patchChunkResult.headers.get("range");
     if (rangeResponse !== range) {
-      throw new Error(`unexpected Range header ${rangeResponse}, expected ${range}`);
+      throw new Error(
+        `unexpected Range header ${rangeResponse}, expected ${range}`,
+      );
     }
 
     previousReadable = current;
@@ -302,7 +336,8 @@ async function pushLayer(layerDigest: string, readableStream: ReadableStream, to
     written += previousReadable.written;
     end += previousReadable.written;
     location = patchChunkResult.headers.get("location") ?? location;
-    if (totalLayerSizeLeft != 0) console.log(layerDigest + ":", totalLayerSizeLeft, "upload bytes left.");
+    if (totalLayerSizeLeft != 0)
+      console.log(layerDigest + ":", totalLayerSizeLeft, "upload bytes left.");
   }
 
   const range = `0-${written - 1}`;
@@ -316,7 +351,9 @@ async function pushLayer(layerDigest: string, readableStream: ReadableStream, to
     }),
   });
   if (!response.ok) {
-    throw new Error(`${uploadURL.toString()} failed with ${response.status}: ${await response.text()}`);
+    throw new Error(
+      `${uploadURL.toString()} failed with ${response.status}: ${await response.text()}`,
+    );
   }
 
   console.log("Pushed", layerDigest);
@@ -347,7 +384,13 @@ for (const compressedDigest of compressedDigests) {
           await pushLayer(digest, stream, layer.size);
           return;
         } catch (err) {
-          console.error(digest, "failed to upload", maxRetries - i - 1, "left...", err);
+          console.error(
+            digest,
+            "failed to upload",
+            maxRetries - i - 1,
+            "left...",
+            err,
+          );
           layer = file(path.join(cacheFolder, compressedDigest));
         }
       }
@@ -391,7 +434,7 @@ const manifestObject = {
 const manifestUploadURL = `${proto}://${imageHost}/v2${imageRepositoryPath}/manifests/${tag}`;
 const responseManifestUpload = await fetch(manifestUploadURL, {
   headers: {
-    "authorization": cred,
+    authorization: cred,
     "content-type": manifestObject.mediaType,
   },
   body: JSON.stringify(manifestObject),

@@ -12,7 +12,9 @@ export function importKeyFromBase64(key: string): JsonWebKey {
   return JSON.parse(decode(key));
 }
 
-export async function newRegistryTokens(jwtPublicKey: string): Promise<RegistryTokens> {
+export async function newRegistryTokens(
+  jwtPublicKey: string,
+): Promise<RegistryTokens> {
   return new RegistryTokens(importKeyFromBase64(jwtPublicKey));
 }
 
@@ -41,12 +43,17 @@ export class RegistryTokens implements Authenticator {
    *    }
    */
   static async createPrivateAndPublicKey(): Promise<[string, string]> {
-    const key = (await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
-      "sign",
-      "verify",
-    ])) as CryptoKeyPair;
-    const exportedPrivateKey = btoa(JSON.stringify(await crypto.subtle.exportKey("jwk", key.privateKey)));
-    const exportedPublicKey = btoa(JSON.stringify(await crypto.subtle.exportKey("jwk", key.publicKey)));
+    const key = (await crypto.subtle.generateKey(
+      { name: "ECDSA", namedCurve: "P-256" },
+      true,
+      ["sign", "verify"],
+    )) as CryptoKeyPair;
+    const exportedPrivateKey = btoa(
+      JSON.stringify(await crypto.subtle.exportKey("jwk", key.privateKey)),
+    );
+    const exportedPublicKey = btoa(
+      JSON.stringify(await crypto.subtle.exportKey("jwk", key.publicKey)),
+    );
     return [exportedPrivateKey, exportedPublicKey];
   }
 
@@ -87,7 +94,9 @@ export class RegistryTokens implements Authenticator {
   }> {
     try {
       // first verify the JWT
-      if (!(await jwt.verify(token, this.jwtPublicKey, { algorithm: "ES256" }))) {
+      if (
+        !(await jwt.verify(token, this.jwtPublicKey, { algorithm: "ES256" }))
+      ) {
         console.warn("verifyToken: jwt.verify() failed");
         return { verified: false, payload: null };
       }
@@ -107,12 +116,17 @@ export class RegistryTokens implements Authenticator {
     }
   }
 
-  static verifyPayload(request: Request, payload: RegistryAuthProtocolTokenPayload) {
+  static verifyPayload(
+    request: Request,
+    payload: RegistryAuthProtocolTokenPayload,
+  ) {
     // Check if token has expired
     const now = Math.floor(Date.now() / 1000);
     if (payload.exp && now >= payload.exp) {
       // The token has expired
-      console.warn(`verifyV0Token: failed jwt verification: the token has expired`);
+      console.warn(
+        `verifyV0Token: failed jwt verification: the token has expired`,
+      );
       return { verified: false, payload: null };
     }
 
@@ -121,7 +135,10 @@ export class RegistryTokens implements Authenticator {
       // PULL or PUSH methods
       case "HEAD":
         // HEAD requests can be used by pushers like docker
-        if (!payload.capabilities.includes("pull") && !payload.capabilities.includes("push")) {
+        if (
+          !payload.capabilities.includes("pull") &&
+          !payload.capabilities.includes("push")
+        ) {
           console.warn(
             `verifyToken: failed jwt verification: missing any capability for HEAD request in ${request.url}`,
           );
@@ -130,8 +147,13 @@ export class RegistryTokens implements Authenticator {
         break;
       // PULL method
       case "GET":
-        if (this.checkIfV2OnlyPath(request) && payload.capabilities.length === 0) {
-          console.warn("verifyToken: failed jwt verification: missing any capabilities for GET request in /v2/");
+        if (
+          this.checkIfV2OnlyPath(request) &&
+          payload.capabilities.length === 0
+        ) {
+          console.warn(
+            "verifyToken: failed jwt verification: missing any capabilities for GET request in /v2/",
+          );
           return { verified: false, payload: null };
         }
 

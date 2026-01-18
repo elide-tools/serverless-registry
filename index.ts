@@ -48,7 +48,9 @@ export default {
 
     const credentials = await authMethod.checkCredentials(request);
     if (!credentials.verified) {
-      console.warn(`Not Authorized. authmode=${authMethod.authmode}. verified=false`);
+      console.warn(
+        `Not Authorized. authmode=${authMethod.authmode}. verified=false`,
+      );
       return new AuthErrorResponse(request);
     }
 

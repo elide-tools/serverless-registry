@@ -49,11 +49,11 @@ export const manifestSchema = z
         z.object({
           mediaType: z.string(),
           platform: z.object({
-            "architecture": z.string(),
-            "os": z.string(),
+            architecture: z.string(),
+            os: z.string(),
             "os.version": z.string().optional(),
-            "variant": z.string().optional(),
-            "features": z.array(z.string()).optional(),
+            variant: z.string().optional(),
+            features: z.array(z.string()).optional(),
           }),
           digest: z.string(),
           size: z.number().int(),

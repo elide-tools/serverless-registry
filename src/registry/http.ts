@@ -63,11 +63,22 @@ function ctxIntoHeaders(ctx: HTTPContext): Headers {
     return headers;
   }
 
-  headers.append("Authorization", (ctx.authContext.authType === "basic" ? "Basic" : "Bearer") + " " + ctx.accessToken);
+  headers.append(
+    "Authorization",
+    (ctx.authContext.authType === "basic" ? "Basic" : "Bearer") +
+      " " +
+      ctx.accessToken,
+  );
   return headers;
 }
 
-function ctxIntoRequest(ctx: HTTPContext, url: URL, method: string, path: string, body?: BodyInit): Request {
+function ctxIntoRequest(
+  ctx: HTTPContext,
+  url: URL,
+  method: string,
+  path: string,
+  body?: BodyInit,
+): Request {
   const urlReq = `${url.protocol}//${url.host}/v2${
     ctx.repository === "" || ctx.repository === "/" ? "/" : ctx.repository + "/"
   }${path}`;
@@ -79,11 +90,16 @@ function ctxIntoRequest(ctx: HTTPContext, url: URL, method: string, path: string
   });
 }
 
-function authHeaderIntoAuthContext(urlObject: URL, authenticateHeader: string): AuthContext {
+function authHeaderIntoAuthContext(
+  urlObject: URL,
+  authenticateHeader: string,
+): AuthContext {
   const url = urlObject.toString();
   const parts = authenticateHeader.split(" ");
   if (parts.length === 0) {
-    throw new Error(`can't retrieve WWW-Authenticate header in /v2 endpoint on registry ${url}: malformed`);
+    throw new Error(
+      `can't retrieve WWW-Authenticate header in /v2 endpoint on registry ${url}: malformed`,
+    );
   }
 
   const authType = parts[0].toLowerCase();
@@ -94,7 +110,9 @@ function authHeaderIntoAuthContext(urlObject: URL, authenticateHeader: string): 
     case "none":
       throw new Error("unsupported auth type for getting an auth context");
     default:
-      throw new Error(`unsupported auth type in WWW-Authenticate on registry ${url}: ${parts[0]}`);
+      throw new Error(
+        `unsupported auth type in WWW-Authenticate on registry ${url}: ${parts[0]}`,
+      );
   }
 
   const variables = parts[1].split(",");
@@ -102,12 +120,15 @@ function authHeaderIntoAuthContext(urlObject: URL, authenticateHeader: string): 
   variables.forEach((variable) => {
     const firstEqual = variable.indexOf("=");
     if (firstEqual === -1) {
-      throw new Error(`expected '=' but didn't encounter it on Auth header on registry ${url}`);
+      throw new Error(
+        `expected '=' but didn't encounter it on Auth header on registry ${url}`,
+      );
     }
 
     const name = variable.slice(0, firstEqual);
     const value = variable.slice(firstEqual + 1);
-    const isMalformed = value.length < 2 || value[0] !== `"` || value[value.length - 1] !== `"`;
+    const isMalformed =
+      value.length < 2 || value[0] !== `"` || value[value.length - 1] !== `"`;
     if (isMalformed) {
       throw new Error(`malformed value on auth header on registry ${url}`);
     }
@@ -124,7 +145,8 @@ function authHeaderIntoAuthContext(urlObject: URL, authenticateHeader: string): 
     }
   });
 
-  if (!authContextOptional.realm) throw new Error(`expected a realm on the auth header in repository ${url}`);
+  if (!authContextOptional.realm)
+    throw new Error(`expected a realm on the auth header in repository ${url}`);
   try {
     const urlRealm = new URL(authContextOptional.realm);
     // if service is not defined, define it by setting it to be the same as the realm's host.
@@ -168,7 +190,11 @@ export class RegistryHTTPClient implements Registry {
       return "";
     }
 
-    return (this.env as unknown as Record<string, string>)[configuration.password_env] ?? "";
+    return (
+      (this.env as unknown as Record<string, string>)[
+        configuration.password_env
+      ] ?? ""
+    );
   }
 
   async authenticate(namespace: string): Promise<HTTPContext> {
@@ -195,13 +221,17 @@ export class RegistryHTTPClient implements Registry {
     }
 
     if (res.status !== 401) {
-      throw new Error(`registry ${this.url.host}/v2 answered with unexpected status code ${res.status}`);
+      throw new Error(
+        `registry ${this.url.host}/v2 answered with unexpected status code ${res.status}`,
+      );
     }
 
     // see https://distribution.github.io/distribution/spec/auth/token/
     const authenticateHeader = res.headers.get("WWW-Authenticate");
     if (authenticateHeader === null) {
-      throw new Error(`can't retrieve WWW-Authenticate header in /v2 endpoint on registry ${this.url.toString()}`);
+      throw new Error(
+        `can't retrieve WWW-Authenticate header in /v2 endpoint on registry ${this.url.toString()}`,
+      );
     }
 
     const authCtx = authHeaderIntoAuthContext(this.url, authenticateHeader);
@@ -226,15 +256,23 @@ export class RegistryHTTPClient implements Registry {
     return false;
   }
 
-  async authenticateBearerSimple(ctx: AuthContext, params: URLSearchParams): Promise<Response> {
+  async authenticateBearerSimple(
+    ctx: AuthContext,
+    params: URLSearchParams,
+  ): Promise<Response> {
     params.delete("password");
-    console.log("sending authentication parameters:", ctx.realm + "?" + params.toString());
+    console.log(
+      "sending authentication parameters:",
+      ctx.realm + "?" + params.toString(),
+    );
 
     return await fetch(ctx.realm + "?" + params.toString(), {
       headers: {
-        "Accept": "application/json",
+        Accept: "application/json",
         "User-Agent": "Docker-Client/24.0.5 (linux)",
-        ...(this.configuration.username !== undefined ? { Authorization: "Basic " + this.authBase64() } : {}),
+        ...(this.configuration.username !== undefined
+          ? { Authorization: "Basic " + this.authBase64() }
+          : {}),
       },
     });
   }
@@ -245,8 +283,10 @@ export class RegistryHTTPClient implements Registry {
       // explicitely include that we don't want an offline_token.
       scope: `repository:${ctx.scope}:pull,push`,
       client_id: "r2registry",
-      grant_type: this.configuration.username === undefined ? "none" : "password",
-      password: this.configuration.username === undefined ? "" : this.password(),
+      grant_type:
+        this.configuration.username === undefined ? "none" : "password",
+      password:
+        this.configuration.username === undefined ? "" : this.password(),
     });
     let response = await fetch(ctx.realm, {
       headers: {
@@ -256,7 +296,11 @@ export class RegistryHTTPClient implements Registry {
       method: "POST",
       body: params.toString(),
     });
-    if (response.status === 404 || response.status === 405 || response.status == 401) {
+    if (
+      response.status === 404 ||
+      response.status === 405 ||
+      response.status == 401
+    ) {
       console.debug(
         this.url.toString(),
         "Oauth 404/401/405... Falling back to simple token authentication, see https://distribution.github.io/distribution/spec/auth/token",
@@ -265,7 +309,9 @@ export class RegistryHTTPClient implements Registry {
       if (responseSimple.ok) {
         response = responseSimple;
       } else {
-        console.error(`Oauth fallback also failed: ${responseSimple.status} ${await responseSimple.text()}`);
+        console.error(
+          `Oauth fallback also failed: ${responseSimple.status} ${await responseSimple.text()}`,
+        );
       }
     }
 
@@ -298,7 +344,8 @@ export class RegistryHTTPClient implements Registry {
       return {
         authContext: ctx,
         repository: response.repository ?? this.url.pathname,
-        accessToken: response.access_token ?? response.token ?? this.authBase64(),
+        accessToken:
+          response.access_token ?? response.token ?? this.authBase64(),
       };
     } catch (err) {
       console.error(
@@ -320,7 +367,9 @@ export class RegistryHTTPClient implements Registry {
     });
 
     if (!res.ok) {
-      throw new Error(`couldn't authenticate with registry ${ctx.realm}: ${JSON.stringify(await res.json())}`);
+      throw new Error(
+        `couldn't authenticate with registry ${ctx.realm}: ${JSON.stringify(await res.json())}`,
+      );
     }
 
     return {
@@ -330,15 +379,30 @@ export class RegistryHTTPClient implements Registry {
     };
   }
 
-  async manifestExists(name: string, tag: string): Promise<CheckManifestResponse | RegistryError> {
-    const namespace = name.includes("/") || !isDockerDotIO(this.url) ? name : `library/${name}`;
+  async manifestExists(
+    name: string,
+    tag: string,
+  ): Promise<CheckManifestResponse | RegistryError> {
+    const namespace =
+      name.includes("/") || !isDockerDotIO(this.url) ? name : `library/${name}`;
     try {
       const ctx = await this.authenticate(namespace);
-      const req = ctxIntoRequest(ctx, this.url, "HEAD", `${namespace}/manifests/${tag}`);
+      const req = ctxIntoRequest(
+        ctx,
+        this.url,
+        "HEAD",
+        `${namespace}/manifests/${tag}`,
+      );
       req.headers.append("Accept", manifestTypes.join(", "));
       const res = await fetch(req);
       if (!res.ok && res.status !== 404) {
-        console.warn(req.url, "->", res.status, "getting manifest:", await res.text());
+        console.warn(
+          req.url,
+          "->",
+          res.status,
+          "getting manifest:",
+          await res.text(),
+        );
         return {
           response: res,
         };
@@ -352,18 +416,30 @@ export class RegistryHTTPClient implements Registry {
         contentType: res.headers.get("Content-Type") ?? "",
       };
     } catch (err) {
-      console.error(`Error doing manifest exists with ${namespace} and ${tag}: ` + errorString(err));
+      console.error(
+        `Error doing manifest exists with ${namespace} and ${tag}: ` +
+          errorString(err),
+      );
       return {
         response: new InternalError(),
       };
     }
   }
 
-  async getManifest(name: string, digest: string): Promise<GetManifestResponse | RegistryError> {
-    const namespace = name.includes("/") || !isDockerDotIO(this.url) ? name : `library/${name}`;
+  async getManifest(
+    name: string,
+    digest: string,
+  ): Promise<GetManifestResponse | RegistryError> {
+    const namespace =
+      name.includes("/") || !isDockerDotIO(this.url) ? name : `library/${name}`;
     try {
       const ctx = await this.authenticate(namespace);
-      const req = ctxIntoRequest(ctx, this.url, "GET", `${namespace}/manifests/${digest}`);
+      const req = ctxIntoRequest(
+        ctx,
+        this.url,
+        "GET",
+        `${namespace}/manifests/${digest}`,
+      );
       req.headers.append("Accept", manifestTypes.join(", "));
       const res = await fetch(req);
       console.log(req.method, res.status, res.url);
@@ -384,18 +460,27 @@ export class RegistryHTTPClient implements Registry {
         contentType: res.headers.get("Content-Type") ?? "",
       };
     } catch (err) {
-      console.error(`Error doing get manifest with ${namespace} and ${digest}: ` + errorString(err));
+      console.error(
+        `Error doing get manifest with ${namespace} and ${digest}: ` +
+          errorString(err),
+      );
       return {
         response: new InternalError(),
       };
     }
   }
 
-  async layerExists(name: string, digest: string): Promise<CheckLayerResponse | RegistryError> {
-    const namespace = name.includes("/") || !isDockerDotIO(this.url) ? name : `library/${name}`;
+  async layerExists(
+    name: string,
+    digest: string,
+  ): Promise<CheckLayerResponse | RegistryError> {
+    const namespace =
+      name.includes("/") || !isDockerDotIO(this.url) ? name : `library/${name}`;
     try {
       const ctx = await this.authenticate(namespace);
-      const res = await fetch(ctxIntoRequest(ctx, this.url, "HEAD", `${namespace}/blobs/${digest}`));
+      const res = await fetch(
+        ctxIntoRequest(ctx, this.url, "HEAD", `${namespace}/blobs/${digest}`),
+      );
       if (res.status === 404) {
         return {
           exists: false,
@@ -424,18 +509,30 @@ export class RegistryHTTPClient implements Registry {
         digest: res.headers.get("Docker-Content-Digest") ?? digest,
       };
     } catch (err) {
-      console.error(`Error doing layer exists with ${namespace} and ${digest}: ` + errorString(err));
+      console.error(
+        `Error doing layer exists with ${namespace} and ${digest}: ` +
+          errorString(err),
+      );
       return {
         response: new InternalError(),
       };
     }
   }
 
-  async getLayer(name: string, digest: string): Promise<GetLayerResponse | RegistryError> {
-    const namespace = name.includes("/") || !isDockerDotIO(this.url) ? name : `library/${name}`;
+  async getLayer(
+    name: string,
+    digest: string,
+  ): Promise<GetLayerResponse | RegistryError> {
+    const namespace =
+      name.includes("/") || !isDockerDotIO(this.url) ? name : `library/${name}`;
     try {
       const ctx = await this.authenticate(namespace);
-      const req = ctxIntoRequest(ctx, this.url, "GET", `${namespace}/blobs/${digest}`);
+      const req = ctxIntoRequest(
+        ctx,
+        this.url,
+        "GET",
+        `${namespace}/blobs/${digest}`,
+      );
       let res = await fetch(req);
       if (!res.ok) {
         // This means we got a redirect, so let's try again this URL but
@@ -467,7 +564,10 @@ export class RegistryHTTPClient implements Registry {
         digest: res.headers.get("Digest-Content-Digest") ?? digest,
       };
     } catch (err) {
-      console.error(`Error doing get layer with ${namespace} and ${digest}: ` + errorString(err));
+      console.error(
+        `Error doing get layer with ${namespace} and ${digest}: ` +
+          errorString(err),
+      );
       return {
         response: new InternalError(),
       };
@@ -495,11 +595,17 @@ export class RegistryHTTPClient implements Registry {
     throw new Error("unimplemented");
   }
 
-  cancelUpload(_namespace: string, _uploadId: UploadId): Promise<true | RegistryError> {
+  cancelUpload(
+    _namespace: string,
+    _uploadId: UploadId,
+  ): Promise<true | RegistryError> {
     throw new Error("unimplemented");
   }
 
-  getUpload(_namespace: string, _uploadId: string): Promise<UploadObject | RegistryError> {
+  getUpload(
+    _namespace: string,
+    _uploadId: string,
+  ): Promise<UploadObject | RegistryError> {
     throw new Error("unimplemented");
   }
 
@@ -525,11 +631,17 @@ export class RegistryHTTPClient implements Registry {
     throw new Error("unimplemented");
   }
 
-  async listRepositories(_limit?: number, _last?: string): Promise<RegistryError | ListRepositoriesResponse> {
+  async listRepositories(
+    _limit?: number,
+    _last?: string,
+  ): Promise<RegistryError | ListRepositoriesResponse> {
     throw new Error("unimplemented");
   }
 
-  garbageCollection(_namespace: string, _mode: GarbageCollectionMode): Promise<boolean> {
+  garbageCollection(
+    _namespace: string,
+    _mode: GarbageCollectionMode,
+  ): Promise<boolean> {
     throw new Error("unimplemented");
   }
 }

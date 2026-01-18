@@ -17,7 +17,8 @@ export const BlobUnknownError = {
       code: "BLOB_UNKNOWN",
       message: "blob unknown to registry",
       detail: {
-        message: "This error may be returned when a layer blob is unknown to the registry.",
+        message:
+          "This error may be returned when a layer blob is unknown to the registry.",
       },
     },
   ],

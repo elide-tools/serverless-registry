@@ -5,7 +5,11 @@ import { errorString, jsonHeaders, wrap } from "./utils";
 import { hexToDigest } from "./user";
 import { ManifestTagsListTooBigError } from "./v2-responses";
 import { Env } from "..";
-import { MINIMUM_CHUNK, MAXIMUM_CHUNK, MAXIMUM_CHUNK_UPLOAD_SIZE } from "./chunk";
+import {
+  MINIMUM_CHUNK,
+  MAXIMUM_CHUNK,
+  MAXIMUM_CHUNK_UPLOAD_SIZE,
+} from "./chunk";
 import {
   CheckLayerResponse,
   CheckManifestResponse,
@@ -42,7 +46,7 @@ v2Router.get("/_catalog", async (req, env: Env) => {
     }),
     {
       headers: {
-        "Link": `${url.protocol}//${url.hostname}${url.pathname}?n=${n ?? 1000}&last=${response.cursor ?? ""}; rel=next`,
+        Link: `${url.protocol}//${url.hostname}${url.pathname}?n=${n ?? 1000}&last=${response.cursor ?? ""}; rel=next`,
         "Content-Type": "application/json",
       },
     },
@@ -67,7 +71,10 @@ v2Router.delete("/:name+/manifests/:reference", async (req, env: Env) => {
   // Reference is ALWAYS a sha256
   const manifest = await env.REGISTRY.head(`${name}/manifests/${reference}`);
   if (manifest === null) {
-    return new Response(JSON.stringify(ManifestUnknownError(reference)), { status: 404, headers: jsonHeaders() });
+    return new Response(JSON.stringify(ManifestUnknownError(reference)), {
+      status: 404,
+      headers: jsonHeaders(),
+    });
   }
   const limitInt = parseInt(limit?.toString() ?? "1000", 10);
   const tags = await env.REGISTRY.list({
@@ -91,7 +98,7 @@ v2Router.delete("/:name+/manifests/:reference", async (req, env: Env) => {
     return new Response(JSON.stringify(ManifestTagsListTooBigError), {
       status: 400,
       headers: {
-        "Link": `${url.toString()}; rel=next`,
+        Link: `${url.toString()}; rel=next`,
         "Content-Type": "application/json",
       },
     });
@@ -139,7 +146,10 @@ v2Router.head("/:name+/manifests/:reference", async (req, env: Env) => {
 
       // If the error is that it doesn't exist
       if ("exists" in res && !res.exists) {
-        const manifestResponse = await client.getManifest(name, response.digest);
+        const manifestResponse = await client.getManifest(
+          name,
+          response.digest,
+        );
         if ("response" in manifestResponse) {
           console.warn(
             "Can't sync with fallback registry because it has returned an error:",
@@ -149,17 +159,25 @@ v2Router.head("/:name+/manifests/:reference", async (req, env: Env) => {
         }
 
         const [putResponse, err] = await wrap(
-          env.REGISTRY_CLIENT.putManifest(name, reference, manifestResponse.stream, {
-            contentType: manifestResponse.contentType,
-            checkLayers: false,
-          }),
+          env.REGISTRY_CLIENT.putManifest(
+            name,
+            reference,
+            manifestResponse.stream,
+            {
+              contentType: manifestResponse.contentType,
+              checkLayers: false,
+            },
+          ),
         );
         if (err) {
           console.error("Error sync manifest into client:", errorString(err));
         }
 
         if (putResponse && "response" in putResponse) {
-          console.error("Error sync manifest into client (non 200 status):", putResponse.response.status);
+          console.error(
+            "Error sync manifest into client (non 200 status):",
+            putResponse.response.status,
+          );
         }
       }
 
@@ -168,7 +186,10 @@ v2Router.head("/:name+/manifests/:reference", async (req, env: Env) => {
   }
 
   if (checkManifestResponse === null || !checkManifestResponse.exists)
-    return new Response(JSON.stringify(ManifestUnknownError(reference)), { status: 404, headers: jsonHeaders() });
+    return new Response(JSON.stringify(ManifestUnknownError(reference)), {
+      status: 404,
+      headers: jsonHeaders(),
+    });
 
   return new Response(null, {
     headers: {
@@ -179,68 +200,81 @@ v2Router.head("/:name+/manifests/:reference", async (req, env: Env) => {
   });
 });
 
-v2Router.get("/:name+/manifests/:reference", async (req, env: Env, context: ExecutionContext) => {
-  const { name, reference } = req.params;
-  const res = await env.REGISTRY_CLIENT.getManifest(name, reference);
-  if (!("response" in res)) {
-    return new Response(res.stream, {
-      headers: {
-        "Content-Length": res.size.toString(),
-        "Content-Type": res.contentType,
-        "Docker-Content-Digest": res.digest,
-      },
-    });
-  }
-
-  let getManifestResponse: GetManifestResponse | null = null;
-  const registriesList = registries(env);
-  for (const registry of registriesList) {
-    const client = new RegistryHTTPClient(env, registry);
-    const response = await client.getManifest(name, reference);
-    if ("response" in response) {
-      continue;
+v2Router.get(
+  "/:name+/manifests/:reference",
+  async (req, env: Env, context: ExecutionContext) => {
+    const { name, reference } = req.params;
+    const res = await env.REGISTRY_CLIENT.getManifest(name, reference);
+    if (!("response" in res)) {
+      return new Response(res.stream, {
+        headers: {
+          "Content-Length": res.size.toString(),
+          "Content-Type": res.contentType,
+          "Docker-Content-Digest": res.digest,
+        },
+      });
     }
 
-    getManifestResponse = response;
-    if (res.response.status !== 404) {
-      // Don't upload the manifest if there is an error
+    let getManifestResponse: GetManifestResponse | null = null;
+    const registriesList = registries(env);
+    for (const registry of registriesList) {
+      const client = new RegistryHTTPClient(env, registry);
+      const response = await client.getManifest(name, reference);
+      if ("response" in response) {
+        continue;
+      }
+
+      getManifestResponse = response;
+      if (res.response.status !== 404) {
+        // Don't upload the manifest if there is an error
+        break;
+      }
+
+      const [s1, s2] = getManifestResponse.stream.tee();
+      getManifestResponse.stream = s1;
+      context.waitUntil(
+        (async () => {
+          const [response, err] = await wrap(
+            env.REGISTRY_CLIENT.putManifest(name, reference, s2, {
+              contentType: getManifestResponse.contentType,
+              checkLayers: false,
+            }),
+          );
+          if (err) {
+            console.error(
+              "Error uploading asynchronously the manifest ",
+              reference,
+              "into main registry",
+            );
+            return;
+          }
+
+          if (response && "response" in response) {
+            console.error(
+              "Error uploading asynchronously manifest:",
+              response.response.status,
+            );
+          }
+        })(),
+      );
       break;
     }
 
-    const [s1, s2] = getManifestResponse.stream.tee();
-    getManifestResponse.stream = s1;
-    context.waitUntil(
-      (async () => {
-        const [response, err] = await wrap(
-          env.REGISTRY_CLIENT.putManifest(name, reference, s2, {
-            contentType: getManifestResponse.contentType,
-            checkLayers: false,
-          }),
-        );
-        if (err) {
-          console.error("Error uploading asynchronously the manifest ", reference, "into main registry");
-          return;
-        }
+    if (getManifestResponse === null)
+      return new Response(JSON.stringify(ManifestUnknownError(reference)), {
+        status: 404,
+        headers: jsonHeaders(),
+      });
 
-        if (response && "response" in response) {
-          console.error("Error uploading asynchronously manifest:", response.response.status);
-        }
-      })(),
-    );
-    break;
-  }
-
-  if (getManifestResponse === null)
-    return new Response(JSON.stringify(ManifestUnknownError(reference)), { status: 404, headers: jsonHeaders() });
-
-  return new Response(getManifestResponse.stream, {
-    headers: {
-      "Content-Length": getManifestResponse.size.toString(),
-      "Content-Type": getManifestResponse.contentType,
-      "Docker-Content-Digest": getManifestResponse.digest,
-    },
-  });
-});
+    return new Response(getManifestResponse.stream, {
+      headers: {
+        "Content-Length": getManifestResponse.size.toString(),
+        "Content-Type": getManifestResponse.contentType,
+        "Docker-Content-Digest": getManifestResponse.digest,
+      },
+    });
+  },
+);
 
 v2Router.put("/:name+/manifests/:reference", async (req, env: Env) => {
   if (!req.headers.get("Content-Type")) {
@@ -249,7 +283,9 @@ v2Router.put("/:name+/manifests/:reference", async (req, env: Env) => {
 
   const { name, reference } = req.params;
   const [res, err] = await wrap<PutManifestResponse | RegistryError, Error>(
-    env.REGISTRY_CLIENT.putManifest(name, reference, req.body!, { contentType: req.headers.get("Content-Type")! }),
+    env.REGISTRY_CLIENT.putManifest(name, reference, req.body!, {
+      contentType: req.headers.get("Content-Type")!,
+    }),
   );
   if (err) {
     console.error("Error putting manifest:", errorString(err));
@@ -263,65 +299,85 @@ v2Router.put("/:name+/manifests/:reference", async (req, env: Env) => {
   return new Response(null, {
     status: 201,
     headers: {
-      "Location": res.location,
+      Location: res.location,
       "Docker-Content-Digest": res.digest,
     },
   });
 });
 
-v2Router.get("/:name+/blobs/:digest", async (req, env: Env, context: ExecutionContext) => {
-  const { name, digest } = req.params;
-  const res = await env.REGISTRY_CLIENT.getLayer(name, digest);
-  if (!("response" in res)) {
-    return new Response(res.stream, {
-      headers: {
-        "Docker-Content-Digest": res.digest,
-        "Content-Length": `${res.size}`,
-      },
-    });
-  }
-
-  let layerResponse: GetLayerResponse | null = null;
-  const registriesList = registries(env);
-  for (const registry of registriesList) {
-    const client = new RegistryHTTPClient(env, registry);
-    const response = await client.getLayer(name, digest);
-    if ("response" in response) {
-      continue;
+v2Router.get(
+  "/:name+/blobs/:digest",
+  async (req, env: Env, context: ExecutionContext) => {
+    const { name, digest } = req.params;
+    const res = await env.REGISTRY_CLIENT.getLayer(name, digest);
+    if (!("response" in res)) {
+      return new Response(res.stream, {
+        headers: {
+          "Docker-Content-Digest": res.digest,
+          "Content-Length": `${res.size}`,
+        },
+      });
     }
 
-    layerResponse = response;
-    const [s1, s2] = layerResponse.stream.tee();
-    layerResponse.stream = s1;
-    context.waitUntil(
-      (async () => {
-        const [response, err] = await wrap(env.REGISTRY_CLIENT.monolithicUpload(name, digest, s2, layerResponse.size));
-        if (err) {
-          console.error("Error uploading asynchronously the layer ", digest, "into main registry");
-          return;
-        }
+    let layerResponse: GetLayerResponse | null = null;
+    const registriesList = registries(env);
+    for (const registry of registriesList) {
+      const client = new RegistryHTTPClient(env, registry);
+      const response = await client.getLayer(name, digest);
+      if ("response" in response) {
+        continue;
+      }
 
-        if (response === false) {
-          console.error("Layer might be too big for the registry client", layerResponse.size);
-        }
-      })(),
-    );
-    break;
-  }
+      layerResponse = response;
+      const [s1, s2] = layerResponse.stream.tee();
+      layerResponse.stream = s1;
+      context.waitUntil(
+        (async () => {
+          const [response, err] = await wrap(
+            env.REGISTRY_CLIENT.monolithicUpload(
+              name,
+              digest,
+              s2,
+              layerResponse.size,
+            ),
+          );
+          if (err) {
+            console.error(
+              "Error uploading asynchronously the layer ",
+              digest,
+              "into main registry",
+            );
+            return;
+          }
 
-  if (layerResponse === null) return new Response(JSON.stringify(BlobUnknownError), { status: 404 });
+          if (response === false) {
+            console.error(
+              "Layer might be too big for the registry client",
+              layerResponse.size,
+            );
+          }
+        })(),
+      );
+      break;
+    }
 
-  return new Response(layerResponse.stream, {
-    headers: {
-      "Docker-Content-Digest": layerResponse.digest,
-      "Content-Length": `${layerResponse.size}`,
-    },
-  });
-});
+    if (layerResponse === null)
+      return new Response(JSON.stringify(BlobUnknownError), { status: 404 });
+
+    return new Response(layerResponse.stream, {
+      headers: {
+        "Docker-Content-Digest": layerResponse.digest,
+        "Content-Length": `${layerResponse.size}`,
+      },
+    });
+  },
+);
 
 v2Router.delete("/:name+/blobs/uploads/:id", async (req, env: Env) => {
   const { name, id } = req.params;
-  const [res, err] = await wrap<true | RegistryError, Error>(env.REGISTRY_CLIENT.cancelUpload(name, id));
+  const [res, err] = await wrap<true | RegistryError, Error>(
+    env.REGISTRY_CLIENT.cancelUpload(name, id),
+  );
   if (err) {
     console.error("Error cancelling upload:", errorString(err));
     return new InternalError();
@@ -331,7 +387,10 @@ v2Router.delete("/:name+/blobs/uploads/:id", async (req, env: Env) => {
     return res.response;
   }
 
-  return new Response(null, { status: 204, headers: { "Content-Length": "0" } });
+  return new Response(null, {
+    status: 204,
+    headers: { "Content-Length": "0" },
+  });
 });
 
 // this is the first thing that the client asks for in an upload
@@ -340,23 +399,34 @@ v2Router.post("/:name+/blobs/uploads/", async (req, env: Env) => {
   const { from, mount } = req.query;
   if (mount !== undefined && from !== undefined) {
     // Try to create a new upload from an existing layer on another repository
-    const [finishedUploadObject, err] = await wrap<FinishedUploadObject | RegistryError, Error>(
-      env.REGISTRY_CLIENT.mountExistingLayer(from.toString(), mount.toString(), name),
+    const [finishedUploadObject, err] = await wrap<
+      FinishedUploadObject | RegistryError,
+      Error
+    >(
+      env.REGISTRY_CLIENT.mountExistingLayer(
+        from.toString(),
+        mount.toString(),
+        name,
+      ),
     );
     // If there is an error, fallback to the default layer upload system
-    if (!(err || (finishedUploadObject && "response" in finishedUploadObject))) {
+    if (
+      !(err || (finishedUploadObject && "response" in finishedUploadObject))
+    ) {
       return new Response(null, {
         status: 201,
         headers: {
           "Content-Length": "0",
-          "Location": finishedUploadObject.location,
+          Location: finishedUploadObject.location,
           "Docker-Content-Digest": finishedUploadObject.digest,
         },
       });
     }
   }
   // Upload a new layer
-  const [uploadObject, err] = await wrap<UploadObject | RegistryError, Error>(env.REGISTRY_CLIENT.startUpload(name));
+  const [uploadObject, err] = await wrap<UploadObject | RegistryError, Error>(
+    env.REGISTRY_CLIENT.startUpload(name),
+  );
 
   if (err) {
     return new InternalError();
@@ -373,8 +443,8 @@ v2Router.post("/:name+/blobs/uploads/", async (req, env: Env) => {
     headers: {
       "Content-Length": "0",
       "Content-Range": range,
-      "Range": range,
-      "Location": uploadObject.location,
+      Range: range,
+      Location: uploadObject.location,
       "Docker-Upload-UUID": uploadObject.id,
       "OCI-Chunk-Min-Length": `${Math.max(MINIMUM_CHUNK, uploadObject.minimumBytesPerChunk ?? MINIMUM_CHUNK)}`,
       "OCI-Chunk-Max-Length": `${Math.min(
@@ -402,9 +472,9 @@ v2Router.get("/:name+/blobs/uploads/:uuid", async (req, env: Env) => {
   return new Response(null, {
     status: 204,
     headers: {
-      "Location": uploadObject.location,
+      Location: uploadObject.location,
       // Note that the HTTP Range header byte ranges are inclusive and that will be honored, even in non-standard use cases.
-      "Range": `${uploadObject.range.join("-")}`,
+      Range: `${uploadObject.range.join("-")}`,
       "Docker-Upload-UUID": uploadObject.id,
       "OCI-Chunk-Min-Length": `${Math.max(MINIMUM_CHUNK, uploadObject.minimumBytesPerChunk ?? MINIMUM_CHUNK)}`,
       "OCI-Chunk-Max-Length": `${Math.min(
@@ -456,9 +526,9 @@ v2Router.patch("/:name+/blobs/uploads/:uuid", async (req, env: Env) => {
   return new Response(null, {
     status: 202,
     headers: {
-      "Location": res.location,
+      Location: res.location,
       // Note that the HTTP Range header byte ranges are inclusive and that will be honored, even in non-standard use cases.
-      "Range": `${res.range.join("-")}`,
+      Range: `${res.range.join("-")}`,
       "Docker-Upload-UUID": res.id,
     },
   });
@@ -493,7 +563,7 @@ v2Router.put("/:name+/blobs/uploads/:uuid", async (req, env: Env) => {
     headers: {
       "Content-Length": "0",
       "Docker-Content-Digest": res.digest,
-      "Location": res.location,
+      Location: res.location,
     },
   });
 });
@@ -560,23 +630,33 @@ v2Router.get("/:name+/tags/list", async (req, env: Env) => {
     startAfter: last ? `${name}/manifests/${last}` : undefined,
   });
   // Filter out sha256 manifest
-  let manifestTags = tags.objects.filter((tag) => !tag.key.startsWith(`${name}/manifests/sha256:`));
+  let manifestTags = tags.objects.filter(
+    (tag) => !tag.key.startsWith(`${name}/manifests/sha256:`),
+  );
   // If results are truncated and the manifest filter removed some result, extend the search to reach the n number of results expected by the client
-  while (tags.objects.length > 0 && tags.truncated && manifestTags.length !== n) {
+  while (
+    tags.objects.length > 0 &&
+    tags.truncated &&
+    manifestTags.length !== n
+  ) {
     tags = await env.REGISTRY.list({
       prefix: `${name}/manifests`,
       limit: n - manifestTags.length,
       cursor: tags.cursor,
     });
     // Filter out sha256 manifest
-    manifestTags = manifestTags.concat(tags.objects.filter((tag) => !tag.key.startsWith(`${name}/manifests/sha256:`)));
+    manifestTags = manifestTags.concat(
+      tags.objects.filter(
+        (tag) => !tag.key.startsWith(`${name}/manifests/sha256:`),
+      ),
+    );
   }
 
   const keys = manifestTags.map((object) => object.key.split("/").pop()!);
   const url = new URL(req.url);
   url.searchParams.set("n", `${n}`);
   url.searchParams.set("last", keys.length ? keys[keys.length - 1] : "");
-  const responseHeaders: { "Content-Type": string; "Link"?: string } = {
+  const responseHeaders: { "Content-Type": string; Link?: string } = {
     "Content-Type": "application/json",
   };
   // Only supply a next link if the previous result is truncated
@@ -618,7 +698,10 @@ v2Router.post("/:name+/gc", async (req, env: Env) => {
 
   const mode = req.query.mode ?? "unreferenced";
   if (mode !== "unreferenced" && mode !== "untagged") {
-    throw new ServerError("Mode must be either 'unreferenced' or 'untagged'", 400);
+    throw new ServerError(
+      "Mode must be either 'unreferenced' or 'untagged'",
+      400,
+    );
   }
   const result = await env.REGISTRY_CLIENT.garbageCollection(name, mode);
   return new Response(JSON.stringify({ success: result }));

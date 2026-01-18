@@ -40,8 +40,8 @@ export class RangeError extends Response {
       {
         status: 416,
         headers: {
-          "Location": `/v2/${state.name}/blobs/uploads/${state.registryUploadId}?_stateHash=${stateHash}`,
-          "Range": `0-${state.byteRange - 1}`,
+          Location: `/v2/${state.name}/blobs/uploads/${state.registryUploadId}?_stateHash=${stateHash}`,
+          Range: `0-${state.byteRange - 1}`,
           "Docker-Upload-UUID": state.registryUploadId,
         },
       },
@@ -72,7 +72,12 @@ export class InternalError extends Response {
 
 export class ManifestError extends Response {
   constructor(
-    code: "MANIFEST_INVALID" | "BLOB_UNKNOWN" | "MANIFEST_UNVERIFIED" | "TAG_INVALID" | "NAME_INVALID",
+    code:
+      | "MANIFEST_INVALID"
+      | "BLOB_UNKNOWN"
+      | "MANIFEST_UNVERIFIED"
+      | "TAG_INVALID"
+      | "NAME_INVALID",
     message: string,
     detail: Record<string, string> = {},
   ) {
@@ -96,9 +101,14 @@ export class ManifestError extends Response {
 
 export class ServerError extends Response {
   constructor(message: string, errorCode = 500) {
-    super(JSON.stringify({ errors: [{ code: "SERVER_ERROR", message, detail: null }] }), {
-      status: errorCode,
-      headers: { "content-type": "application/json;charset=UTF-8" },
-    });
+    super(
+      JSON.stringify({
+        errors: [{ code: "SERVER_ERROR", message, detail: null }],
+      }),
+      {
+        status: errorCode,
+        headers: { "content-type": "application/json;charset=UTF-8" },
+      },
+    );
   }
 }
