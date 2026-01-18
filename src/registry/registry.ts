@@ -1,7 +1,7 @@
 import { Env } from "../..";
 import { InternalError } from "../errors";
 import { errorString } from "../utils";
-import z from "zod";
+import z from "zod/v3";
 import { GarbageCollectionMode } from "./garbage-collector";
 
 // Defines a registry and how it's configured

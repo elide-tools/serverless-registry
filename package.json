@@ -13,7 +13,7 @@
     "@cfworker/base64url": "^1.12.5",
     "@tsndr/cloudflare-worker-jwt": "^3.2.1",
     "itty-router": "^4.0.27",
-    "zod": "^3.22.4"
+    "zod": "^4.3.5"
   },
   "optionalDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.12.3"

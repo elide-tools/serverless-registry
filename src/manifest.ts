@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v3";
 
 // https://github.com/opencontainers/image-spec/blob/main/manifest.md
 export const manifestSchema = z
