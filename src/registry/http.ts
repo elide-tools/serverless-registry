@@ -94,6 +94,9 @@ function authHeaderIntoAuthContext(
   urlObject: URL,
   authenticateHeader: string,
 ): AuthContext {
+  if (!authenticateHeader || typeof authenticateHeader !== 'string') {
+    throw new Error(`missing or invalid WWW-Authenticate header on registry ${urlObject}`);
+  }
   const url = urlObject.toString();
   const parts = authenticateHeader.split(" ");
   if (parts.length === 0) {
