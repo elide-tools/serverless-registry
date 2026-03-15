@@ -182,7 +182,7 @@ export class GarbageCollector {
         }
       }
       truncated = next.truncated;
-      cursor = truncated ? cursor : undefined;
+      cursor = truncated ? next.cursor : undefined;
     }
     return true;
   }
@@ -311,7 +311,7 @@ export class GarbageCollector {
     });
 
     // Check for symlink before removal
-    if (unreferencedBlobs.size >= 0) {
+    if (unreferencedBlobs.size > 0) {
       await this.list("", async (object) => {
         const objectPath = object.key;
         // Skip non-blobs object and from any other repository (symlink only target cross repository blobs)

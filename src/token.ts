@@ -82,7 +82,7 @@ export class RegistryTokens implements Authenticator {
   }
 
   static checkIfV2OnlyPath(request: Request): boolean {
-    return request.url.endsWith("/v2/");
+    return new URL(request.url).pathname.endsWith("/v2/");
   }
 
   async verifyToken(

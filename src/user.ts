@@ -96,7 +96,7 @@ export class UserAuthenticator implements Authenticator {
     const payload = {
       username,
       capabilities: credential.capabilities,
-      exp: Date.now() + 60 * 60,
+      exp: Math.floor(Date.now() / 1000) + 60 * 60,
       aud: "",
     };
 
