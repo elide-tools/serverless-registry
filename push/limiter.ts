@@ -23,6 +23,7 @@ export class ReadableLimiter extends stream.Readable {
   _read(): void {
     if (this.limit === 0) {
       this.push(null);
+      return;
     }
 
     if (this.leftover !== undefined) {

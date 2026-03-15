@@ -564,7 +564,7 @@ export class RegistryHTTPClient implements Registry {
       return {
         stream: res.body,
         size: +(res.headers.get("Content-Length") ?? "0"),
-        digest: res.headers.get("Digest-Content-Digest") ?? digest,
+        digest: res.headers.get("Docker-Content-Digest") ?? digest,
       };
     } catch (err) {
       console.error(
