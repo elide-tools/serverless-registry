@@ -106,10 +106,10 @@ v2Router.delete("/:name+/manifests/:reference", async (req, env: Env) => {
 
   // Last but not least, delete the digest manifest
   await env.REGISTRY.delete(`${name}/manifests/${reference}`);
-  return new Response("", {
+  return new Response(null, {
     status: 202,
     headers: {
-      "Content-Length": "None",
+      "Content-Length": "0",
     },
   });
 });
@@ -537,6 +537,9 @@ v2Router.patch("/:name+/blobs/uploads/:uuid", async (req, env: Env) => {
 v2Router.put("/:name+/blobs/uploads/:uuid", async (req, env: Env) => {
   const { name, uuid } = req.params;
   const { digest } = req.query;
+  if (!digest || typeof digest !== "string") {
+    throw new ServerError("missing 'digest' query parameter", 400);
+  }
 
   const url = new URL(req.url);
   const [res, err] = await wrap<FinishedUploadObject | RegistryError, Error>(
@@ -544,7 +547,7 @@ v2Router.put("/:name+/blobs/uploads/:uuid", async (req, env: Env) => {
       name,
       uuid,
       url.pathname + "?" + url.searchParams.toString(),
-      digest! as string,
+      digest,
       req.body ?? undefined,
       +(req.headers.get("Content-Length") ?? "0"),
     ),
@@ -688,7 +691,7 @@ v2Router.delete("/:name+/blobs/:digest", async (req, env: Env) => {
   return new Response(null, {
     status: 202,
     headers: {
-      "Content-Length": "None",
+      "Content-Length": "0",
     },
   });
 });
