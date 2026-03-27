@@ -4,8 +4,8 @@
   "description": "An open-source R2 registry",
   "main": "index.ts",
   "scripts": {
-    "deploy": "bun x wrangler deploy --minify --env production",
-    "dev:miniflare": "cross-env NODE_ENV=development bun x wrangler --env dev dev --port 9999 --live-reload",
+    "deploy": "bun x -p wrangler@latest wrangler deploy --minify --env production",
+    "dev:miniflare": "cross-env NODE_ENV=development bun x -p wrangler@latest wrangler --env dev dev --port 9999 --live-reload",
     "typecheck": "bun x tsc",
     "test": "vitest --config test/vitest.config.ts run"
   },

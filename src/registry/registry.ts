@@ -8,6 +8,7 @@ import { GarbageCollectionMode } from "./garbage-collector";
 const registryConfiguration = z
   .object({
     registry: z.string().url(),
+    namespace_prefix: z.string().optional(),
   })
   .and(
     z
