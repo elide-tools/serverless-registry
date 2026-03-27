@@ -24,7 +24,7 @@ export function hexToDigest(
 function stringToArrayBuffer(s: string): ArrayBuffer {
   const encoder = new TextEncoder();
   const arr = encoder.encode(s);
-  return arr;
+  return arr.buffer as ArrayBuffer;
 }
 
 export async function getSHA256(
