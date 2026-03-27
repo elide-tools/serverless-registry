@@ -24,16 +24,15 @@ export async function getChunkBlob(
       // not necessary, this is a correct chunk always.
       return null;
     case "small-chunk":
-    case "multi-part-chunk-no-same-size":
+    case "multi-part-chunk-no-same-size": {
       const res = await env.REGISTRY.get(chunk.r2Path);
       if (res === null) {
         throw new InternalError();
       }
-
       // I wish we could somehow return this as stream, but we can't as 'combine'
       // below wouldn't work
-      const blob = await res.blob();
-      return blob;
+      return await res.blob();
+    }
   }
 }
 
@@ -137,12 +136,10 @@ export async function* split(
 
     writer.releaseLock();
     await lastIdentity.writable.close();
-  })()
-    .then()
-    .catch((err) => {
-      console.log("Error on last identity", err);
-      throw err;
-    });
+  })().catch((err) => {
+    console.log("Error on last identity", err);
+    throw err;
+  });
 
   yield [limit(lastIdentity.readable, size), size];
   await t;

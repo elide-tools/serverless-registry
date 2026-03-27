@@ -1495,6 +1495,54 @@ describe("garbage collector", () => {
   });
 });
 
+describe("resolveNamespace", () => {
+  const bindings = env as Env;
+
+  test("short name is prefixed", () => {
+    const client = new RegistryHTTPClient(bindings, {
+      registry: "https://ghcr.io",
+      password_env: "GHCR_TOKEN",
+      username: "user",
+      namespace_prefix: "elide-dev",
+    });
+    expect(client.resolveNamespace("bash")).toEqual("elide-dev/bash");
+    expect(client.resolveNamespace("elide")).toEqual("elide-dev/elide");
+  });
+
+  test("already-prefixed name passes through", () => {
+    const client = new RegistryHTTPClient(bindings, {
+      registry: "https://ghcr.io",
+      password_env: "GHCR_TOKEN",
+      username: "user",
+      namespace_prefix: "elide-dev",
+    });
+    expect(client.resolveNamespace("elide-dev/bash")).toEqual("elide-dev/bash");
+    expect(client.resolveNamespace("elide-dev/elide")).toEqual("elide-dev/elide");
+    expect(client.resolveNamespace("elide-dev")).toEqual("elide-dev");
+  });
+
+  test("disallowed prefix is rejected", () => {
+    const client = new RegistryHTTPClient(bindings, {
+      registry: "https://ghcr.io",
+      password_env: "GHCR_TOKEN",
+      username: "user",
+      namespace_prefix: "elide-dev",
+    });
+    expect(client.resolveNamespace("other-org/foo")).toBeNull();
+    expect(client.resolveNamespace("malicious/elide-dev/bash")).toBeNull();
+  });
+
+  test("no prefix configured passes everything through", () => {
+    const client = new RegistryHTTPClient(bindings, {
+      registry: "https://ghcr.io",
+      password_env: "GHCR_TOKEN",
+      username: "user",
+    });
+    expect(client.resolveNamespace("bash")).toEqual("bash");
+    expect(client.resolveNamespace("any-org/anything")).toEqual("any-org/anything");
+  });
+});
+
 test("docker.io", () => {
   const t = [
     ["https://docker.io", true],
