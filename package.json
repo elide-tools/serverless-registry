@@ -22,11 +22,11 @@
     "@cloudflare/workers-types": "^4.20260118.0",
     "cross-env": "^7.0.3",
     "eslint": "^8.57.0",
-    "miniflare": "4.20260114.0",
-    "prettier": "3.8.0",
+    "miniflare": "4.20260317.3",
+    "prettier": "3.8.1",
     "typescript": "^5.9.3",
     "vitest": "^2.1.9",
-    "esbuild": "0.27.2"
+    "esbuild": "0.27.4"
   },
   "engines": {
     "node": ">=18"
