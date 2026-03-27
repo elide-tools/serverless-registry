@@ -23,6 +23,7 @@ export interface Env {
   READONLY_PASSWORD?: string;
   PUSH_COMPATIBILITY_MODE?: PushCompatibilityMode;
   REGISTRIES_JSON?: string; // should be in the format of RegistryConfiguration[];
+  ALLOW_PUBLIC_PULL?: string;
   REGISTRY_CLIENT: Registry;
 }
 
@@ -31,7 +32,7 @@ const router = Router();
 /**
  * V2 Api
  */
-router.all("/v2/*", v2Router.handle);
+router.all("/v2/*", v2Router.fetch);
 
 router.all("*", () => new Response("Not Found.", { status: 404 }));
 
@@ -41,23 +42,30 @@ export default {
       return new AuthErrorResponse(request);
     }
 
+    const isReadOnly = request.method === "GET" || request.method === "HEAD";
+    const allowPublicPull = env.ALLOW_PUBLIC_PULL === "true";
+
     const authMethod = await authenticationMethodFromEnv(env);
     if (!authMethod) {
-      return new AuthErrorResponse(request);
-    }
-
-    const credentials = await authMethod.checkCredentials(request);
-    if (!credentials.verified) {
-      console.warn(
-        `Not Authorized. authmode=${authMethod.authmode}. verified=false`,
-      );
-      return new AuthErrorResponse(request);
+      if (!(allowPublicPull && isReadOnly)) {
+        return new AuthErrorResponse(request);
+      }
+    } else {
+      const credentials = await authMethod.checkCredentials(request);
+      if (!credentials.verified) {
+        if (!(allowPublicPull && isReadOnly)) {
+          console.warn(
+            `Not Authorized. authmode=${authMethod.authmode}. verified=false`,
+          );
+          return new AuthErrorResponse(request);
+        }
+      }
     }
 
     env.REGISTRY_CLIENT = new R2Registry(env);
     try {
       // Dispatch the request to the appropriate route
-      const res = await router.handle(request, env, context);
+      const res = await router.fetch(request, env, context);
       return res;
     } catch (err) {
       if (err instanceof Response) {

@@ -4,10 +4,10 @@
     "lib": ["esnext"],
     "experimentalDecorators": true,
     "module": "esnext",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "types": [
       "@cloudflare/workers-types/2023-07-01",
-      "@cloudflare/vitest-pool-workers"
+      "@cloudflare/vitest-pool-workers/types"
     ],
     "resolveJsonModule": true,
     "allowJs": true,

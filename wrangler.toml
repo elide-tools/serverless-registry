@@ -23,6 +23,7 @@ JWT_REGISTRY_TOKENS_PUBLIC_KEY = ""
 REGISTRIES_JSON = "[{ \"registry\": \"https://ghcr.io\", \"password_env\": \"GHCR_TOKEN\", \"username\": \"sgammon\", \"namespace_prefix\": \"elide-dev\" }]"
 USERNAME = "engineering"
 READONLY_USERNAME = "readonly"
+ALLOW_PUBLIC_PULL = "true"
 
 # Required secrets (set via `wrangler secret put --env production`):
 #   PASSWORD            - auth password for push access
@@ -36,6 +37,7 @@ r2_buckets = [{ binding = "REGISTRY", bucket_name = "elide-container-registry-de
 REGISTRIES_JSON = "[{ \"registry\": \"https://ghcr.io\", \"password_env\": \"GHCR_TOKEN\", \"username\": \"sgammon\", \"namespace_prefix\": \"elide-dev\" }]"
 USERNAME = "engineering"
 READONLY_USERNAME = "readonly"
+ALLOW_PUBLIC_PULL = "true"
 
 # Required secrets for local dev (set in .dev.vars):
 #   PASSWORD            - auth password for push access

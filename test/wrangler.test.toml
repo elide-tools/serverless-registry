@@ -17,3 +17,4 @@ r2_buckets = [{ binding = "REGISTRY", bucket_name = "r2-image-registry-dev" }]
 [env.dev.vars]
 USERNAME = "hello"
 PASSWORD = "world"
+ALLOW_PUBLIC_PULL = "true"

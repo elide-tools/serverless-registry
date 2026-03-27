@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, test } from "vitest";
+import { afterAll, beforeEach, describe, expect, test } from "vitest";
 import { SHA256_PREFIX_LEN, getSHA256 } from "../src/user";
 import { TagsList } from "../src/router";
 import { Env } from "..";
@@ -10,11 +10,21 @@ import { encode } from "@cfworker/base64url";
 import { ManifestSchema } from "../src/manifest";
 import { limit } from "../src/chunk";
 import worker from "../index";
+import { env } from "cloudflare:workers";
 import {
   createExecutionContext,
-  env,
   waitOnExecutionContext,
 } from "cloudflare:test";
+
+async function clearR2Bucket() {
+  const bindings = env as Env;
+  let listed = await bindings.REGISTRY.list();
+  while (listed.objects.length > 0) {
+    await Promise.all(listed.objects.map((obj) => bindings.REGISTRY.delete(obj.key)));
+    if (!listed.truncated) break;
+    listed = await bindings.REGISTRY.list({ cursor: listed.cursor });
+  }
+}
 
 async function generateManifest(
   name: string,
@@ -182,7 +192,7 @@ describe("v2", () => {
 
   test("Username password authenticatiom fails gracefully when wrong format", async () => {
     const res = await fetchUnauth(
-      createRequest("GET", `/v2/`, null, {
+      createRequest("POST", `/v2/test/blobs/uploads/`, null, {
         Authorization: `Basic ${encode("hello")}:${encode("t")}`,
       }),
     );
@@ -192,7 +202,7 @@ describe("v2", () => {
   test("Username password authenticatiom fails gracefully when password is wrong", async () => {
     const cred = encode(`hello:t`);
     const res = await fetchUnauth(
-      createRequest("GET", `/v2/`, null, {
+      createRequest("POST", `/v2/test/blobs/uploads/`, null, {
         Authorization: `Basic ${cred}`,
       }),
     );
@@ -202,7 +212,7 @@ describe("v2", () => {
   test("Simple username password authenticatiom fails gracefully when password is wrong", async () => {
     const cred = encode(`hello:t`);
     const res = await fetchUnauth(
-      createRequest("GET", `/v2/`, null, {
+      createRequest("POST", `/v2/test/blobs/uploads/`, null, {
         Authorization: `Basic ${cred}`,
       }),
     );
@@ -212,7 +222,7 @@ describe("v2", () => {
   test("Simple username password authenticatiom fails gracefully when username is wrong", async () => {
     const cred = encode(`hell0:world`);
     const res = await fetchUnauth(
-      createRequest("GET", `/v2/`, null, {
+      createRequest("POST", `/v2/test/blobs/uploads/`, null, {
         Authorization: `Basic ${cred}`,
       }),
     );
@@ -220,22 +230,45 @@ describe("v2", () => {
   });
 
   test("Simple username password authentication", async () => {
-    const res = await fetchUnauth(createRequest("GET", `/v2/`, null, {}));
+    // Unauthenticated POST should be rejected
+    const res = await fetchUnauth(createRequest("POST", `/v2/test/blobs/uploads/`, null, {}));
     expect(res.status).toBe(401);
     expect(res.ok).toBeFalsy();
+    // Wrong credentials POST should be rejected
     const resAuth = await fetchUnauth(
-      createRequest("GET", `/v2/`, null, {
+      createRequest("POST", `/v2/test/blobs/uploads/`, null, {
         Authorization: usernamePasswordToAuth("hellO", "worlD"),
       }),
     );
     expect(resAuth.status).toBe(401);
     expect(resAuth.ok).toBeFalsy();
+    // Correct credentials GET should succeed
     const resAuthCorrect = await fetchUnauth(
       createRequest("GET", `/v2/`, null, {
         Authorization: usernamePasswordToAuth("hello", "world"),
       }),
     );
     expect(resAuthCorrect.ok).toBeTruthy();
+  });
+
+  test("Unauthenticated GET /v2/ returns 200 (public pull)", async () => {
+    const res = await fetchUnauth(createRequest("GET", `/v2/`, null, {}));
+    expect(res.status).toBe(200);
+  });
+
+  test("Unauthenticated GET /v2/:name/manifests/:ref returns non-401 (public pull)", async () => {
+    const res = await fetchUnauth(
+      createRequest("GET", `/v2/missing/manifests/latest`, null, {}),
+    );
+    expect(res.status).not.toBe(401);
+    expect(res.status).toBe(404);
+  });
+
+  test("Unauthenticated POST is rejected (public pull does not allow writes)", async () => {
+    const res = await fetchUnauth(
+      createRequest("POST", `/v2/test/blobs/uploads/`, null, {}),
+    );
+    expect(res.status).toBe(401);
   });
 });
 
@@ -777,10 +810,10 @@ test("registries configuration", async () => {
 describe("http client", () => {
   const bindings = env as Env;
   let envBindings = { ...bindings };
-  const prevFetch = global.fetch;
+  const prevFetch = globalThis.fetch;
 
   afterAll(() => {
-    global.fetch = prevFetch;
+    globalThis.fetch = prevFetch;
   });
 
   test("test manifest exists", async () => {
@@ -789,7 +822,7 @@ describe("http client", () => {
     envBindings.PASSWORD = "world";
     envBindings.USERNAME = "hello";
     envBindings.REGISTRIES_JSON = undefined;
-    global.fetch = async function (r: RequestInfo): Promise<Response> {
+    globalThis.fetch = async function (r: RequestInfo | URL): Promise<Response> {
       return fetch(new Request(r));
     };
     const client = new RegistryHTTPClient(envBindings, {
@@ -815,7 +848,7 @@ describe("http client", () => {
     envBindings.READONLY_PASSWORD = "world";
     envBindings.READONLY_USERNAME = "hello";
     envBindings.REGISTRIES_JSON = undefined;
-    global.fetch = async function (r: RequestInfo): Promise<Response> {
+    globalThis.fetch = async function (r: RequestInfo | URL): Promise<Response> {
       return fetch(new Request(r));
     };
     const client = new RegistryHTTPClient(envBindings, {
@@ -835,6 +868,8 @@ describe("http client", () => {
 });
 
 describe("push and catalog", () => {
+  beforeEach(clearR2Bucket);
+
   test("push and then use the catalog", async () => {
     await createManifest(
       "hello-world-main",
@@ -1010,6 +1045,8 @@ async function createManifestList(
 }
 
 describe("v2 manifest-list", () => {
+  beforeEach(clearR2Bucket);
+
   test("Upload manifest-list", async () => {
     const name = "m-arch";
     const tag = "app";
@@ -1156,6 +1193,8 @@ async function runGarbageCollector(
 }
 
 describe("garbage collector", () => {
+  beforeEach(clearR2Bucket);
+
   test("Single arch image", async () => {
     const name = "hello";
     const manifestOld = await generateManifest(name);
