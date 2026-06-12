@@ -23,6 +23,9 @@ export interface Env {
   READONLY_PASSWORD?: string;
   PUSH_COMPATIBILITY_MODE?: PushCompatibilityMode;
   REGISTRIES_JSON?: string; // should be in the format of RegistryConfiguration[];
+  // Seconds a cached mutable tag may be served from R2 without revalidating against the fallback.
+  // 0 / unset = always revalidate (freshest). A positive value bounds upstream cost.
+  MANIFEST_TAG_TTL_SECONDS?: string;
   ALLOW_PUBLIC_PULL?: string;
   REGISTRY_CLIENT: Registry;
 }

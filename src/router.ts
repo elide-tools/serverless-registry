@@ -177,6 +177,26 @@ async function storeManifest(
   }
 }
 
+// Seconds a cached mutable tag may be served from R2 without revalidating against the fallback.
+// 0 (default) = always revalidate; a positive value bounds upstream cost (pull-through TTL).
+function tagRevalidationTtlMs(env: Env): number {
+  const seconds = parseInt(env.MANIFEST_TAG_TTL_SECONDS ?? "", 10);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 0;
+}
+
+// True when a cached tag manifest is younger than the revalidation TTL, so it can be served
+// straight from R2 without an upstream check.
+async function tagCacheIsFresh(
+  env: Env,
+  name: string,
+  reference: string,
+): Promise<boolean> {
+  const ttlMs = tagRevalidationTtlMs(env);
+  if (ttlMs === 0) return false;
+  const head = await env.REGISTRY.head(`${name}/manifests/${reference}`);
+  return head !== null && Date.now() - head.uploaded.getTime() < ttlMs;
+}
+
 v2Router.head(
   "/:name+/manifests/:reference",
   async (req, env: Env, context: ExecutionContext) => {
@@ -195,12 +215,19 @@ v2Router.head(
       return manifestHeadResponse(cached);
     }
 
+    // Within the revalidation TTL, serve the cached tag without an upstream check.
+    if (cached !== null && (await tagCacheIsFresh(env, name, reference))) {
+      return manifestHeadResponse(cached);
+    }
+
     let checkManifestResponse: CheckManifestResponse | null = cached;
     for (const registry of registryList) {
       const client = new RegistryHTTPClient(env, registry);
       const response = await client.manifestExists(name, reference);
-      if ("response" in response || !response.exists) {
-        // Fallback unreachable or doesn't have the reference: keep the cached answer.
+      // A 200 without a Docker-Content-Digest header (the header is SHOULD, not MUST) gives no
+      // digest to compare or fetch by, so treat it as "the fallback can't answer".
+      if ("response" in response || !response.exists || !response.digest) {
+        // Fallback unreachable or can't give a digest: keep the cached answer.
         continue;
       }
 
@@ -265,11 +292,18 @@ v2Router.get(
         return manifestResponse(res);
       }
 
+      // Within the revalidation TTL, serve the cached tag without an upstream check.
+      if (await tagCacheIsFresh(env, name, reference)) {
+        return manifestResponse(res);
+      }
+
       for (const registry of registriesList) {
         const client = new RegistryHTTPClient(env, registry);
         const upstream = await client.manifestExists(name, reference);
-        if ("response" in upstream || !upstream.exists) {
-          // Fallback unreachable or no longer has the tag: keep serving the cached copy.
+        // A 200 without a Docker-Content-Digest header (the header is SHOULD, not MUST) gives no
+        // digest to compare or fetch by, so treat it as "the fallback can't answer".
+        if ("response" in upstream || !upstream.exists || !upstream.digest) {
+          // Fallback unreachable or can't give a digest: keep serving the cached copy.
           continue;
         }
 

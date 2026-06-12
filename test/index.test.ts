@@ -1803,3 +1803,250 @@ describe("fallback tag revalidation (stale mutable tags)", () => {
     await res.text();
   });
 });
+
+describe("fallback tag revalidation - edge cases", () => {
+  const bindings = env as Env;
+  const realFetch = globalThis.fetch;
+
+  beforeEach(async () => {
+    await clearR2Bucket();
+    globalThis.fetch = realFetch;
+    bindings.REGISTRIES_JSON = undefined;
+    bindings.MANIFEST_TAG_TTL_SECONDS = undefined;
+  });
+
+  afterAll(() => {
+    globalThis.fetch = realFetch;
+    bindings.REGISTRIES_JSON = undefined;
+    bindings.MANIFEST_TAG_TTL_SECONDS = undefined;
+  });
+
+  // Fake fallback supporting bearer auth (/v2/ -> 401 + token endpoint), an omitted
+  // Docker-Content-Digest header, and unreachability. Tracks calls for assertions.
+  function installFallback(opts: {
+    host: string;
+    name: string;
+    digest?: string;
+    body?: string;
+    auth?: "bearer";
+    contentType?: string;
+  }) {
+    const contentType =
+      opts.contentType ??
+      "application/vnd.docker.distribution.manifest.v2+json";
+    const token = "fake-token";
+    const calls = { ping: 0, token: 0, head: 0, get: 0, authedManifest: 0 };
+    const manifestPrefix = `/v2/${opts.name}/manifests/`;
+    globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      const req = input instanceof Request ? input : new Request(input, init);
+      const url = new URL(req.url);
+      if (url.host !== opts.host) {
+        return new Response(`unexpected host ${url.href}`, { status: 502 });
+      }
+      if (url.pathname === "/v2/") {
+        calls.ping++;
+        if (opts.auth === "bearer") {
+          return new Response(null, {
+            status: 401,
+            headers: {
+              "WWW-Authenticate": `Bearer realm="https://${opts.host}/token",service="${opts.host}",scope="repository:${opts.name}:pull"`,
+            },
+          });
+        }
+        return new Response(null, { status: 200 });
+      }
+      if (url.pathname === "/token") {
+        calls.token++;
+        return new Response(
+          JSON.stringify({ token, access_token: token, expires_in: 300 }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.pathname.startsWith(manifestPrefix)) {
+        if (req.headers.get("Authorization") === `Bearer ${token}`) {
+          calls.authedManifest++;
+        }
+        const headers: Record<string, string> = {
+          "Content-Length": String(
+            new TextEncoder().encode(opts.body ?? "").length,
+          ),
+          "Content-Type": contentType,
+        };
+        if (opts.digest) headers["Docker-Content-Digest"] = opts.digest;
+        if (req.method === "HEAD") {
+          calls.head++;
+          return new Response(null, { status: 200, headers });
+        }
+        calls.get++;
+        return new Response(opts.body ?? "", { status: 200, headers });
+      }
+      return new Response("not found", { status: 404 });
+    }) as unknown as typeof globalThis.fetch;
+    return calls;
+  }
+
+  function configureFallback(host: string) {
+    bindings.REGISTRIES_JSON = JSON.stringify([
+      { registry: `https://${host}`, password_env: "PASSWORD", username },
+    ]);
+  }
+
+  // Digest of the manifest currently stored in R2 under name/reference, or null if absent.
+  async function r2ManifestDigest(
+    name: string,
+    reference: string,
+  ): Promise<string | null> {
+    const obj = await bindings.REGISTRY.get(`${name}/manifests/${reference}`);
+    if (obj === null) return null;
+    return await getSHA256(await obj.text());
+  }
+
+  test("a fallback 200 without Docker-Content-Digest does not poison the response", async () => {
+    const name = "edge-nodigest";
+    const { sha256: cachedDigest } = await createManifest(
+      name,
+      await generateManifest(name),
+      "latest",
+    );
+    configureFallback("fb.example");
+    const calls = installFallback({ host: "fb.example", name, body: "x" });
+
+    const res = await fetch(
+      createRequest("GET", `/v2/${name}/manifests/latest`, null),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Docker-Content-Digest")).toEqual(cachedDigest);
+    await res.text();
+    expect(calls.get).toBe(0); // never fetches getManifest(..., null)
+
+    const head = await fetch(
+      createRequest("HEAD", `/v2/${name}/manifests/latest`, null),
+    );
+    expect(head.headers.get("Docker-Content-Digest")).toEqual(cachedDigest);
+  });
+
+  test("a stale GET persists the fresh manifest into R2", async () => {
+    const name = "edge-persist-get";
+    await createManifest(name, await generateManifest(name), "latest");
+    const freshBody = JSON.stringify(await generateManifest(name));
+    const freshDigest = await getSHA256(freshBody);
+
+    configureFallback("fb.example");
+    installFallback({
+      host: "fb.example",
+      name,
+      digest: freshDigest,
+      body: freshBody,
+    });
+
+    const res = await fetch(
+      createRequest("GET", `/v2/${name}/manifests/latest`, null),
+    );
+    expect(res.headers.get("Docker-Content-Digest")).toEqual(freshDigest);
+    await res.text();
+    expect(await r2ManifestDigest(name, "latest")).toEqual(freshDigest);
+  });
+
+  test("a stale HEAD persists the fresh manifest into R2", async () => {
+    const name = "edge-persist-head";
+    await createManifest(name, await generateManifest(name), "latest");
+    const freshBody = JSON.stringify(await generateManifest(name));
+    const freshDigest = await getSHA256(freshBody);
+
+    configureFallback("fb.example");
+    installFallback({
+      host: "fb.example",
+      name,
+      digest: freshDigest,
+      body: freshBody,
+    });
+
+    const res = await fetch(
+      createRequest("HEAD", `/v2/${name}/manifests/latest`, null),
+    );
+    expect(res.headers.get("Docker-Content-Digest")).toEqual(freshDigest);
+    expect(await r2ManifestDigest(name, "latest")).toEqual(freshDigest);
+  });
+
+  test("revalidation works against a bearer-authenticated fallback", async () => {
+    const name = "edge-bearer";
+    const { sha256: staleDigest } = await createManifest(
+      name,
+      await generateManifest(name),
+      "latest",
+    );
+    const freshBody = JSON.stringify(await generateManifest(name));
+    const freshDigest = await getSHA256(freshBody);
+    expect(freshDigest).not.toEqual(staleDigest);
+
+    configureFallback("fb.example");
+    const calls = installFallback({
+      host: "fb.example",
+      name,
+      digest: freshDigest,
+      body: freshBody,
+      auth: "bearer",
+    });
+
+    const res = await fetch(
+      createRequest("GET", `/v2/${name}/manifests/latest`, null),
+    );
+    expect(res.headers.get("Docker-Content-Digest")).toEqual(freshDigest);
+    expect(await res.text()).toEqual(freshBody);
+    expect(calls.token).toBeGreaterThan(0);
+    expect(calls.authedManifest).toBeGreaterThan(0);
+  });
+
+  test("within the TTL the cached tag is served without any upstream call", async () => {
+    const name = "edge-ttl";
+    const { sha256: cachedDigest } = await createManifest(
+      name,
+      await generateManifest(name),
+      "latest",
+    );
+    const newerBody = JSON.stringify(await generateManifest(name));
+    const newerDigest = await getSHA256(newerBody);
+    expect(newerDigest).not.toEqual(cachedDigest);
+
+    bindings.MANIFEST_TAG_TTL_SECONDS = "3600";
+    configureFallback("fb.example");
+    const calls = installFallback({
+      host: "fb.example",
+      name,
+      digest: newerDigest,
+      body: newerBody,
+    });
+
+    const res = await fetch(
+      createRequest("GET", `/v2/${name}/manifests/latest`, null),
+    );
+    expect(res.headers.get("Docker-Content-Digest")).toEqual(cachedDigest);
+    await res.text();
+    expect(calls.ping).toBe(0); // upstream never consulted within TTL
+  });
+
+  test("a tag missing from R2 is pulled from the fallback and cached", async () => {
+    const name = "edge-pullthrough";
+    const freshBody = JSON.stringify(await generateManifest(name));
+    const freshDigest = await getSHA256(freshBody);
+
+    configureFallback("fb.example");
+    installFallback({
+      host: "fb.example",
+      name,
+      digest: freshDigest,
+      body: freshBody,
+    });
+
+    const res = await fetch(
+      createRequest("GET", `/v2/${name}/manifests/latest`, null),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Docker-Content-Digest")).toEqual(freshDigest);
+    await res.text();
+    expect(await r2ManifestDigest(name, "latest")).toEqual(freshDigest);
+  });
+});
