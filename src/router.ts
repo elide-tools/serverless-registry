@@ -114,109 +114,190 @@ v2Router.delete("/:name+/manifests/:reference", async (req, env: Env) => {
   });
 });
 
-v2Router.head("/:name+/manifests/:reference", async (req, env: Env) => {
-  const { name, reference } = req.params;
-  const res = await env.REGISTRY_CLIENT.manifestExists(name, reference);
-  if ("exists" in res && res.exists) {
-    return new Response(null, {
-      headers: {
-        "Content-Length": res.size.toString(),
-        "Content-Type": res.contentType,
-        "Docker-Content-Digest": res.digest,
-      },
-    });
+// A `sha256:` reference is immutable content; anything else is a mutable tag.
+function isTagReference(reference: string): boolean {
+  return !reference.startsWith("sha256:");
+}
+
+// Build the body response for a resolved manifest (GET).
+function manifestResponse(manifest: GetManifestResponse): Response {
+  return new Response(manifest.stream, {
+    headers: {
+      "Content-Length": manifest.size.toString(),
+      "Content-Type": manifest.contentType,
+      "Docker-Content-Digest": manifest.digest,
+    },
+  });
+}
+
+// Build the headers-only response for a resolved manifest (HEAD).
+function manifestHeadResponse(manifest: {
+  size: number;
+  digest: string;
+  contentType: string;
+}): Response {
+  return new Response(null, {
+    headers: {
+      "Content-Length": manifest.size.toString(),
+      "Content-Type": manifest.contentType,
+      "Docker-Content-Digest": manifest.digest,
+    },
+  });
+}
+
+// Persist a manifest fetched from a fallback into R2 so the next pull is served locally.
+async function storeManifest(
+  env: Env,
+  name: string,
+  reference: string,
+  stream: ReadableStream,
+  contentType: string,
+): Promise<void> {
+  const [putResponse, err] = await wrap(
+    env.REGISTRY_CLIENT.putManifest(name, reference, stream, {
+      contentType,
+      checkLayers: false,
+    }),
+  );
+  if (err) {
+    console.error(
+      "Error syncing manifest",
+      reference,
+      "into registry:",
+      errorString(err),
+    );
+    return;
   }
 
-  let checkManifestResponse: CheckManifestResponse | null = null;
-  const registryList = registries(env);
-  for (const registry of registryList) {
-    const client = new RegistryHTTPClient(env, registry);
-    const response = await client.manifestExists(name, reference);
-    if ("response" in response) {
-      continue;
+  if (putResponse && "response" in putResponse) {
+    console.error(
+      "Error syncing manifest (non-200 status):",
+      putResponse.response.status,
+    );
+  }
+}
+
+v2Router.head(
+  "/:name+/manifests/:reference",
+  async (req, env: Env, context: ExecutionContext) => {
+    const { name, reference } = req.params;
+    const res = await env.REGISTRY_CLIENT.manifestExists(name, reference);
+    const registryList = registries(env);
+    const cached = "exists" in res && res.exists ? res : null;
+
+    // Immutable digests, and any reference with no fallback configured, are answered from R2. A
+    // mutable tag with a fallback is revalidated below so a moved upstream tag is never reported
+    // from a frozen R2 copy.
+    if (
+      cached !== null &&
+      (!isTagReference(reference) || registryList.length === 0)
+    ) {
+      return manifestHeadResponse(cached);
     }
 
-    if (response.exists) {
+    let checkManifestResponse: CheckManifestResponse | null = cached;
+    for (const registry of registryList) {
+      const client = new RegistryHTTPClient(env, registry);
+      const response = await client.manifestExists(name, reference);
+      if ("response" in response || !response.exists) {
+        // Fallback unreachable or doesn't have the reference: keep the cached answer.
+        continue;
+      }
+
+      if (cached !== null && cached.digest === response.digest) {
+        checkManifestResponse = cached; // cache is up to date
+        break;
+      }
+
+      // Reference absent or stale in R2: report the upstream digest and refresh R2 in the
+      // background so the subsequent pull is served locally.
       checkManifestResponse = {
+        exists: true,
         size: response.size,
         digest: response.digest,
         contentType: response.contentType,
-        exists: true,
       };
+      context.waitUntil(
+        (async () => {
+          const fresh = await client.getManifest(name, response.digest);
+          if ("response" in fresh) {
+            console.warn(
+              "Can't sync with fallback registry because it has returned an error:",
+              fresh.response.status,
+            );
+            return;
+          }
 
-      // If the error is that it doesn't exist
-      if ("exists" in res && !res.exists) {
-        const manifestResponse = await client.getManifest(
-          name,
-          response.digest,
-        );
-        if ("response" in manifestResponse) {
-          console.warn(
-            "Can't sync with fallback registry because it has returned an error:",
-            manifestResponse.response.status,
-          );
-          break;
-        }
-
-        const [putResponse, err] = await wrap(
-          env.REGISTRY_CLIENT.putManifest(
+          await storeManifest(
+            env,
             name,
             reference,
-            manifestResponse.stream,
-            {
-              contentType: manifestResponse.contentType,
-              checkLayers: false,
-            },
-          ),
-        );
-        if (err) {
-          console.error("Error sync manifest into client:", errorString(err));
-        }
-
-        if (putResponse && "response" in putResponse) {
-          console.error(
-            "Error sync manifest into client (non 200 status):",
-            putResponse.response.status,
+            fresh.stream,
+            fresh.contentType,
           );
-        }
-      }
-
+        })(),
+      );
       break;
     }
-  }
 
-  if (checkManifestResponse === null || !checkManifestResponse.exists)
-    return new Response(JSON.stringify(ManifestUnknownError(reference)), {
-      status: 404,
-      headers: jsonHeaders(),
-    });
+    if (checkManifestResponse === null || !checkManifestResponse.exists)
+      return new Response(JSON.stringify(ManifestUnknownError(reference)), {
+        status: 404,
+        headers: jsonHeaders(),
+      });
 
-  return new Response(null, {
-    headers: {
-      "Content-Length": checkManifestResponse.size.toString(),
-      "Content-Type": checkManifestResponse.contentType,
-      "Docker-Content-Digest": checkManifestResponse.digest,
-    },
-  });
-});
+    return manifestHeadResponse(checkManifestResponse);
+  },
+);
 
 v2Router.get(
   "/:name+/manifests/:reference",
   async (req, env: Env, context: ExecutionContext) => {
     const { name, reference } = req.params;
     const res = await env.REGISTRY_CLIENT.getManifest(name, reference);
+    const registriesList = registries(env);
+
     if (!("response" in res)) {
-      return new Response(res.stream, {
-        headers: {
-          "Content-Length": res.size.toString(),
-          "Content-Type": res.contentType,
-          "Docker-Content-Digest": res.digest,
-        },
-      });
+      // Immutable digests, and any reference with no fallback configured, are served from R2. A
+      // mutable tag with a fallback is revalidated against it (the source of truth for tags) so a
+      // tag moved upstream (e.g. :latest) is never served from a frozen R2 copy.
+      if (!isTagReference(reference) || registriesList.length === 0) {
+        return manifestResponse(res);
+      }
+
+      for (const registry of registriesList) {
+        const client = new RegistryHTTPClient(env, registry);
+        const upstream = await client.manifestExists(name, reference);
+        if ("response" in upstream || !upstream.exists) {
+          // Fallback unreachable or no longer has the tag: keep serving the cached copy.
+          continue;
+        }
+
+        if (upstream.digest === res.digest) {
+          return manifestResponse(res); // cache is up to date
+        }
+
+        // Tag moved upstream: fetch the current manifest, refresh R2, serve the fresh copy.
+        const fresh = await client.getManifest(name, upstream.digest);
+        if ("response" in fresh) {
+          continue;
+        }
+
+        res.stream.cancel().catch(() => {});
+        const [serveStream, storeStream] = fresh.stream.tee();
+        fresh.stream = serveStream;
+        context.waitUntil(
+          storeManifest(env, name, reference, storeStream, fresh.contentType),
+        );
+        return manifestResponse(fresh);
+      }
+
+      // No fallback could answer: serve the cached copy rather than failing the pull.
+      return manifestResponse(res);
     }
 
+    // R2 miss: fetch from a fallback and copy into R2 (pull-through / migration behavior).
     let getManifestResponse: GetManifestResponse | null = null;
-    const registriesList = registries(env);
     for (const registry of registriesList) {
       const client = new RegistryHTTPClient(env, registry);
       const response = await client.getManifest(name, reference);
@@ -226,36 +307,20 @@ v2Router.get(
 
       getManifestResponse = response;
       if (res.response.status !== 404) {
-        // Don't upload the manifest if there is an error
+        // Don't cache over a non-404 R2 error.
         break;
       }
 
-      const [s1, s2] = getManifestResponse.stream.tee();
-      getManifestResponse.stream = s1;
+      const [serveStream, storeStream] = getManifestResponse.stream.tee();
+      getManifestResponse.stream = serveStream;
       context.waitUntil(
-        (async () => {
-          const [response, err] = await wrap(
-            env.REGISTRY_CLIENT.putManifest(name, reference, s2, {
-              contentType: getManifestResponse.contentType,
-              checkLayers: false,
-            }),
-          );
-          if (err) {
-            console.error(
-              "Error uploading asynchronously the manifest ",
-              reference,
-              "into main registry",
-            );
-            return;
-          }
-
-          if (response && "response" in response) {
-            console.error(
-              "Error uploading asynchronously manifest:",
-              response.response.status,
-            );
-          }
-        })(),
+        storeManifest(
+          env,
+          name,
+          reference,
+          storeStream,
+          getManifestResponse.contentType,
+        ),
       );
       break;
     }
@@ -266,13 +331,7 @@ v2Router.get(
         headers: jsonHeaders(),
       });
 
-    return new Response(getManifestResponse.stream, {
-      headers: {
-        "Content-Length": getManifestResponse.size.toString(),
-        "Content-Type": getManifestResponse.contentType,
-        "Docker-Content-Digest": getManifestResponse.digest,
-      },
-    });
+    return manifestResponse(getManifestResponse);
   },
 );
 
