@@ -1602,3 +1602,204 @@ test("docker.io", () => {
     }
   }
 });
+
+describe("fallback tag revalidation (stale mutable tags)", () => {
+  const bindings = env as Env;
+  const realFetch = globalThis.fetch;
+
+  beforeEach(async () => {
+    await clearR2Bucket();
+    globalThis.fetch = realFetch;
+    bindings.REGISTRIES_JSON = undefined;
+  });
+
+  afterAll(() => {
+    globalThis.fetch = realFetch;
+    bindings.REGISTRIES_JSON = undefined;
+  });
+
+  // Fake fallback registry over globalThis.fetch: the /v2/ ping returns 200 (or 503 when
+  // unreachable), HEAD <ref> reports `digest`, GET <digest> returns `body`. Tracks calls so a test
+  // can assert whether the body was actually refetched.
+  function installFakeFallback(opts: {
+    host: string;
+    name: string;
+    digest: string;
+    body: string;
+    reachable?: boolean;
+    contentType?: string;
+  }) {
+    const contentType =
+      opts.contentType ??
+      "application/vnd.docker.distribution.manifest.v2+json";
+    const calls = { ping: 0, head: 0, get: 0 };
+    const manifestPrefix = `/v2/${opts.name}/manifests/`;
+    globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      const req = input instanceof Request ? input : new Request(input, init);
+      const url = new URL(req.url);
+      if (url.host !== opts.host) {
+        return new Response(`unexpected host ${url.href}`, { status: 502 });
+      }
+      if (url.pathname === "/v2/") {
+        calls.ping++;
+        return new Response(null, {
+          status: opts.reachable === false ? 503 : 200,
+        });
+      }
+      if (url.pathname.startsWith(manifestPrefix)) {
+        const headers = {
+          "Docker-Content-Digest": opts.digest,
+          "Content-Length": String(new TextEncoder().encode(opts.body).length),
+          "Content-Type": contentType,
+        };
+        if (req.method === "HEAD") {
+          calls.head++;
+          return new Response(null, { status: 200, headers });
+        }
+        calls.get++;
+        return new Response(opts.body, { status: 200, headers });
+      }
+      return new Response("not found", { status: 404 });
+    }) as unknown as typeof globalThis.fetch;
+    return calls;
+  }
+
+  function configureFallback(host: string) {
+    bindings.REGISTRIES_JSON = JSON.stringify([
+      { registry: `https://${host}`, password_env: "PASSWORD", username },
+    ]);
+  }
+
+  test("GET refreshes a stale tag from the fallback", async () => {
+    const name = "revalidate-stale";
+    const { sha256: staleDigest } = await createManifest(
+      name,
+      await generateManifest(name),
+      "latest",
+    );
+    const freshBody = JSON.stringify(await generateManifest(name));
+    const freshDigest = await getSHA256(freshBody);
+    expect(freshDigest).not.toEqual(staleDigest);
+
+    configureFallback("fallback.example");
+    const calls = installFakeFallback({
+      host: "fallback.example",
+      name,
+      digest: freshDigest,
+      body: freshBody,
+    });
+
+    const res = await fetch(
+      createRequest("GET", `/v2/${name}/manifests/latest`, null),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Docker-Content-Digest")).toEqual(freshDigest);
+    expect(await res.text()).toEqual(freshBody);
+    expect(calls.get).toBeGreaterThan(0);
+  });
+
+  test("HEAD reports the fresh digest when the cached tag is stale", async () => {
+    const name = "revalidate-stale-head";
+    const { sha256: staleDigest } = await createManifest(
+      name,
+      await generateManifest(name),
+      "latest",
+    );
+    const freshBody = JSON.stringify(await generateManifest(name));
+    const freshDigest = await getSHA256(freshBody);
+    expect(freshDigest).not.toEqual(staleDigest);
+
+    configureFallback("fallback.example");
+    installFakeFallback({
+      host: "fallback.example",
+      name,
+      digest: freshDigest,
+      body: freshBody,
+    });
+
+    const res = await fetch(
+      createRequest("HEAD", `/v2/${name}/manifests/latest`, null),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Docker-Content-Digest")).toEqual(freshDigest);
+  });
+
+  test("up-to-date tag is served from R2 without refetching the body", async () => {
+    const name = "revalidate-fresh";
+    const { sha256: digest } = await createManifest(
+      name,
+      await generateManifest(name),
+      "latest",
+    );
+
+    configureFallback("fallback.example");
+    const calls = installFakeFallback({
+      host: "fallback.example",
+      name,
+      digest,
+      body: "unused",
+    });
+
+    const res = await fetch(
+      createRequest("GET", `/v2/${name}/manifests/latest`, null),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Docker-Content-Digest")).toEqual(digest);
+    await res.text();
+    expect(calls.head).toBeGreaterThan(0);
+    expect(calls.get).toBe(0);
+  });
+
+  test("digest references are served from R2 without consulting the fallback", async () => {
+    const name = "revalidate-digest";
+    const { sha256: digest } = await createManifest(
+      name,
+      await generateManifest(name),
+    );
+
+    configureFallback("fallback.example");
+    const calls = installFakeFallback({
+      host: "fallback.example",
+      name,
+      digest,
+      body: "unused",
+    });
+
+    const res = await fetch(
+      createRequest("GET", `/v2/${name}/manifests/${digest}`, null),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Docker-Content-Digest")).toEqual(digest);
+    await res.text();
+    expect(calls.ping).toBe(0);
+    expect(calls.head).toBe(0);
+  });
+
+  test("an unreachable fallback falls back to the cached copy", async () => {
+    const name = "revalidate-unreachable";
+    const { sha256: cachedDigest } = await createManifest(
+      name,
+      await generateManifest(name),
+      "latest",
+    );
+
+    configureFallback("fallback.example");
+    installFakeFallback({
+      host: "fallback.example",
+      name,
+      digest: "sha256:unused",
+      body: "unused",
+      reachable: false,
+    });
+
+    const res = await fetch(
+      createRequest("GET", `/v2/${name}/manifests/latest`, null),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Docker-Content-Digest")).toEqual(cachedDigest);
+    await res.text();
+  });
+});
