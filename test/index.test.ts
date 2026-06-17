@@ -20,7 +20,9 @@ async function clearR2Bucket() {
   const bindings = env as Env;
   let listed = await bindings.REGISTRY.list();
   while (listed.objects.length > 0) {
-    await Promise.all(listed.objects.map((obj) => bindings.REGISTRY.delete(obj.key)));
+    await Promise.all(
+      listed.objects.map((obj) => bindings.REGISTRY.delete(obj.key)),
+    );
     if (!listed.truncated) break;
     listed = await bindings.REGISTRY.list({ cursor: listed.cursor });
   }
@@ -231,7 +233,9 @@ describe("v2", () => {
 
   test("Simple username password authentication", async () => {
     // Unauthenticated POST should be rejected
-    const res = await fetchUnauth(createRequest("POST", `/v2/test/blobs/uploads/`, null, {}));
+    const res = await fetchUnauth(
+      createRequest("POST", `/v2/test/blobs/uploads/`, null, {}),
+    );
     expect(res.status).toBe(401);
     expect(res.ok).toBeFalsy();
     // Wrong credentials POST should be rejected
@@ -822,7 +826,9 @@ describe("http client", () => {
     envBindings.PASSWORD = "world";
     envBindings.USERNAME = "hello";
     envBindings.REGISTRIES_JSON = undefined;
-    globalThis.fetch = async function (r: RequestInfo | URL): Promise<Response> {
+    globalThis.fetch = async function (
+      r: RequestInfo | URL,
+    ): Promise<Response> {
       return fetch(new Request(r));
     };
     const client = new RegistryHTTPClient(envBindings, {
@@ -848,7 +854,9 @@ describe("http client", () => {
     envBindings.READONLY_PASSWORD = "world";
     envBindings.READONLY_USERNAME = "hello";
     envBindings.REGISTRIES_JSON = undefined;
-    globalThis.fetch = async function (r: RequestInfo | URL): Promise<Response> {
+    globalThis.fetch = async function (
+      r: RequestInfo | URL,
+    ): Promise<Response> {
       return fetch(new Request(r));
     };
     const client = new RegistryHTTPClient(envBindings, {
@@ -1556,7 +1564,9 @@ describe("resolveNamespace", () => {
       namespace_prefix: "elide-dev",
     });
     expect(client.resolveNamespace("elide-dev/bash")).toEqual("elide-dev/bash");
-    expect(client.resolveNamespace("elide-dev/elide")).toEqual("elide-dev/elide");
+    expect(client.resolveNamespace("elide-dev/elide")).toEqual(
+      "elide-dev/elide",
+    );
     expect(client.resolveNamespace("elide-dev")).toEqual("elide-dev");
   });
 
@@ -1578,7 +1588,9 @@ describe("resolveNamespace", () => {
       username: "user",
     });
     expect(client.resolveNamespace("bash")).toEqual("bash");
-    expect(client.resolveNamespace("any-org/anything")).toEqual("any-org/anything");
+    expect(client.resolveNamespace("any-org/anything")).toEqual(
+      "any-org/anything",
+    );
   });
 });
 

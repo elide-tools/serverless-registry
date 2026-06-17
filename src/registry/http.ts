@@ -94,8 +94,10 @@ function authHeaderIntoAuthContext(
   urlObject: URL,
   authenticateHeader: string,
 ): AuthContext {
-  if (!authenticateHeader || typeof authenticateHeader !== 'string') {
-    throw new Error(`missing or invalid WWW-Authenticate header on registry ${urlObject}`);
+  if (!authenticateHeader || typeof authenticateHeader !== "string") {
+    throw new Error(
+      `missing or invalid WWW-Authenticate header on registry ${urlObject}`,
+    );
   }
   const url = urlObject.toString();
   const parts = authenticateHeader.split(" ");
@@ -397,9 +399,12 @@ export class RegistryHTTPClient implements Registry {
     tag: string,
   ): Promise<CheckManifestResponse | RegistryError> {
     const resolved = this.resolveNamespace(name);
-    if (resolved === null) return { response: new Response(null, { status: 403 }) };
+    if (resolved === null)
+      return { response: new Response(null, { status: 403 }) };
     const namespace =
-      resolved.includes("/") || !isDockerDotIO(this.url) ? resolved : `library/${resolved}`;
+      resolved.includes("/") || !isDockerDotIO(this.url)
+        ? resolved
+        : `library/${resolved}`;
     try {
       const ctx = await this.authenticate(namespace);
       const req = ctxIntoRequest(
@@ -446,9 +451,12 @@ export class RegistryHTTPClient implements Registry {
     digest: string,
   ): Promise<GetManifestResponse | RegistryError> {
     const resolved = this.resolveNamespace(name);
-    if (resolved === null) return { response: new Response(null, { status: 403 }) };
+    if (resolved === null)
+      return { response: new Response(null, { status: 403 }) };
     const namespace =
-      resolved.includes("/") || !isDockerDotIO(this.url) ? resolved : `library/${resolved}`;
+      resolved.includes("/") || !isDockerDotIO(this.url)
+        ? resolved
+        : `library/${resolved}`;
     try {
       const ctx = await this.authenticate(namespace);
       const req = ctxIntoRequest(
@@ -492,9 +500,12 @@ export class RegistryHTTPClient implements Registry {
     digest: string,
   ): Promise<CheckLayerResponse | RegistryError> {
     const resolved = this.resolveNamespace(name);
-    if (resolved === null) return { response: new Response(null, { status: 403 }) };
+    if (resolved === null)
+      return { response: new Response(null, { status: 403 }) };
     const namespace =
-      resolved.includes("/") || !isDockerDotIO(this.url) ? resolved : `library/${resolved}`;
+      resolved.includes("/") || !isDockerDotIO(this.url)
+        ? resolved
+        : `library/${resolved}`;
     try {
       const ctx = await this.authenticate(namespace);
       const res = await fetch(
@@ -543,9 +554,12 @@ export class RegistryHTTPClient implements Registry {
     digest: string,
   ): Promise<GetLayerResponse | RegistryError> {
     const resolved = this.resolveNamespace(name);
-    if (resolved === null) return { response: new Response(null, { status: 403 }) };
+    if (resolved === null)
+      return { response: new Response(null, { status: 403 }) };
     const namespace =
-      resolved.includes("/") || !isDockerDotIO(this.url) ? resolved : `library/${resolved}`;
+      resolved.includes("/") || !isDockerDotIO(this.url)
+        ? resolved
+        : `library/${resolved}`;
     try {
       const ctx = await this.authenticate(namespace);
       const req = ctxIntoRequest(

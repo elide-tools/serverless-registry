@@ -74,9 +74,13 @@ export class RegistryTokens implements Authenticator {
       aud: registryUrl,
     };
 
-    const token = await jwt.sign(tokenPayload, privateKey as JsonWebKeyWithKid, {
-      algorithm: "ES256",
-    });
+    const token = await jwt.sign(
+      tokenPayload,
+      privateKey as JsonWebKeyWithKid,
+      {
+        algorithm: "ES256",
+      },
+    );
 
     return token;
   }
@@ -95,7 +99,9 @@ export class RegistryTokens implements Authenticator {
     try {
       // first verify the JWT
       if (
-        !(await jwt.verify(token, this.jwtPublicKey as JsonWebKeyWithKid, { algorithm: "ES256" }))
+        !(await jwt.verify(token, this.jwtPublicKey as JsonWebKeyWithKid, {
+          algorithm: "ES256",
+        }))
       ) {
         console.warn("verifyToken: jwt.verify() failed");
         return { verified: false, payload: null };
